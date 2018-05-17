@@ -9,4 +9,4 @@ Generic Key-Value Service
 * Support major key-value data storages that have C/C++ clients
 * NO VENDOR LOCK-IN
 * Failover support
-* Cross datacenter replication (Zones)
+* Multi datacenter support (MDC, Zones)
