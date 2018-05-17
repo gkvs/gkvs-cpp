@@ -6,3 +6,4 @@ Generic Key-Value Service
 * Written on C/C++
 * Network interface GRPC (Sync and Async)
 * Support major Key-Value data storages that have C/C++ clients
+* NO VENDOR LOCK-IN
