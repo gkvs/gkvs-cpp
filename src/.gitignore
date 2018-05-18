@@ -1,0 +1,6 @@
+.DS_Store
+gkvs.grpc.pb.h
+gkvs.pb.h
+gkvs_client
+gkvs_server
+*.o
