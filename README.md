@@ -1,7 +1,7 @@
 # gkvs
 Generic Key-Value Store
 
-* Stateless service
+* Federated and own tables
 * Zero-config
 * Written on C/C++
 * Network interface GRPC (Sync and Async)
