@@ -41,9 +41,89 @@ using grpc::Status;
 using std::chrono::system_clock;
 
 
+class GenericStoreImpl final : public gkvs::GenericStore::Service {
+
+public:
+
+    explicit GenericStoreImpl(const std::string &db) {
+
+    }
+
+
+    Status getHead(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request,
+                   ::gkvs::HeadResult *response) override {
+      return Service::getHead(context, request, response);
+    }
+
+    Status multiGetHead(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
+                        ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
+      return Service::multiGetHead(context, request, writer);
+    }
+
+    Status
+    get(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::RecordResult *response) override {
+      return Service::get(context, request, response);
+    }
+
+    Status multiGet(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
+                    ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
+      return Service::multiGet(context, request, writer);
+    }
+
+    Status scanHead(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
+                    ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
+      return Service::scanHead(context, request, writer);
+    }
+
+    Status scan(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
+                ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
+      return Service::scan(context, request, writer);
+    }
+
+    Status put(::grpc::ServerContext *context, const ::gkvs::PutOperation *request, ::gkvs::Status *response) override {
+      return Service::put(context, request, response);
+    }
+
+    Status compareAndPut(::grpc::ServerContext *context, const ::gkvs::PutOperation *request,
+                         ::gkvs::Status *response) override {
+      return Service::compareAndPut(context, request, response);
+    }
+
+    Status putAll(::grpc::ServerContext *context,
+                  ::grpc::ServerReaderWriter<::gkvs::Status, ::gkvs::PutOperation> *stream) override {
+      return Service::putAll(context, stream);
+    }
+
+    Status
+    remove(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::Status *response) override {
+      return Service::remove(context, request, response);
+    }
+
+    Status removeAll(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
+                     ::gkvs::Status *response) override {
+      return Service::removeAll(context, request, response);
+    }
+
+};
+
+
+void RunServer(const std::string& db_path) {
+  std::string server_address("0.0.0.0:4040");
+  GenericStoreImpl service(db_path);
+
+  ServerBuilder builder;
+  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+  builder.RegisterService(&service);
+  std::unique_ptr<Server> server(builder.BuildAndStart());
+  std::cout << "Server listening on " << server_address << std::endl;
+  server->Wait();
+}
+
 int main(int argc, char** argv) {
 
   std::cout << "GKVS Server" << std::endl;
+
+  RunServer(".");
 
   return 0;
 }
