@@ -23,6 +23,14 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include <aerospike/aerospike.h>
+#include <aerospike/aerospike_key.h>
+#include <aerospike/as_error.h>
+#include <aerospike/as_record.h>
+#include <aerospike/as_sleep.h>
+#include <aerospike/as_status.h>
+
 #include "driver.h"
 
 namespace gkvs {

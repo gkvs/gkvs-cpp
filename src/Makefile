@@ -44,8 +44,11 @@ $(PROJECT)_client: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_client.o help
 	$(CXX) $^ $(LDFLAGS) -o $@
 
 $(PROJECT)_server: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o
-	$(CXX) $^ $(LDFLAGS) -o $@
+	$(CXX) $^ $(LDFLAGS) -laerospike -o $@
 
+as_driver.o: as_driver.cc
+	$(CXX) $^ $(CXXFLAGS) -c -o $@
+ 
 %.grpc.pb.cc: %.proto
 	$(PROTOC) -I $(PROTOS_PATH) --grpc_out=. --plugin=protoc-gen-grpc=$(GRPC_CPP_PLUGIN_PATH) $<
 
@@ -108,3 +111,7 @@ endif
 ifneq ($(SYSTEM_OK),true)
 	@false
 endif
+
+
+show:
+	otool -L gkvs_server
