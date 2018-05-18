@@ -1,5 +1,5 @@
 # gkvs
-Generic Key-Value Service
+Generic Key-Value Store
 
 * Stateless service
 * Zero-config
