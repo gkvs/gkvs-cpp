@@ -1,4 +1,5 @@
 #
+# Copyright 2018 gKVS authors.
 # Copyright 2015 gRPC authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,16 +33,16 @@ PROTOC = protoc
 GRPC_CPP_PLUGIN = grpc_cpp_plugin
 GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
 
-PROTOS_PATH = ../../protos
+PROTOS_PATH = /protos
 
 vpath %.proto $(PROTOS_PATH)
 
-all: system-check route_guide_client route_guide_server
+all: system-check gkvs_client gkvs_server
 
-route_guide_client: route_guide.pb.o route_guide.grpc.pb.o route_guide_client.o helper.o
+gkvs_client: gkvs.pb.o gkvs.grpc.pb.o gkvs.o helper.o
 	$(CXX) $^ $(LDFLAGS) -o $@
 
-route_guide_server: route_guide.pb.o route_guide.grpc.pb.o route_guide_server.o helper.o
+gkvs_server: gkvs.pb.o gkvs.grpc.pb.o gkvs_server.o helper.o
 	$(CXX) $^ $(LDFLAGS) -o $@
 
 %.grpc.pb.cc: %.proto
@@ -51,7 +52,7 @@ route_guide_server: route_guide.pb.o route_guide.grpc.pb.o route_guide_server.o 
 	$(PROTOC) -I $(PROTOS_PATH) --cpp_out=. $<
 
 clean:
-	rm -f *.o *.pb.cc *.pb.h route_guide_client route_guide_server
+	rm -f *.o *.pb.cc *.pb.h gkvs_client gkvs_server
 
 
 # The following is to test your system and ensure a smoother experience.
