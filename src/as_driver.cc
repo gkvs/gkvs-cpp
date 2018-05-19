@@ -31,6 +31,8 @@
 #include <aerospike/as_sleep.h>
 #include <aerospike/as_status.h>
 
+#include <glog/logging.h>
+
 #include "driver.h"
 
 #include <nlohmann/json.hpp>
@@ -55,7 +57,7 @@ namespace gkvs {
 
     public:
 
-        explicit AerospikeDriver(const std::string &host, uint16_t port, const std::string &lua_path) : Driver() {
+        explicit AerospikeDriver(const json &conf, const std::string &lua_path) : Driver() {
 
             as_log_set_callback(console_log_callback);
 
@@ -69,9 +71,12 @@ namespace gkvs {
                 if (lua_path.length() < (AS_CONFIG_PATH_MAX_SIZE - 1)) {
                     strcpy(lua.user_path, lua_path.data());
                 } else {
-                    std::cerr << "lua_path is too long: " << lua_path << std::endl;
+                    LOG(ERROR) << "lua_path is too long: " << lua_path;
                 }
 
+            }
+            else {
+                LOG(INFO) << "lua_path is empty ";
             }
 
             // Initialize global lua configuration.
@@ -80,12 +85,32 @@ namespace gkvs {
             as_config config;
             as_config_init(&config);
 
+            json cluster = conf["cluster"];
+
+            std::string host = cluster["host"].get<std::string>();
+            int port = cluster["port"].get<int>();
+
             if (! as_config_add_hosts(&config, host.data(), port)) {
-                std::cerr << "invalid host: " << host << std::endl;
+                LOG(ERROR) << "invalid host: " << host;
                 throw std::invalid_argument( "invalid host" );
             }
 
-            as_config_set_user(&config, "", "");
+            std::string username = cluster["username"].get<std::string>();
+            std::string password = cluster["password"].get<std::string>();
+
+            as_config_set_user(&config, username.data(), password.data());
+
+            //memcpy(&config.tls, &g_tls, sizeof(as_config_tls));
+            //config.auth_mode = g_auth_mode;
+
+            aerospike_init(&_as, &config);
+
+            as_error err;
+
+            if (aerospike_connect(&_as, &err) != AEROSPIKE_OK) {
+                LOG(ERROR) << "aerospike_connect code: " << err.code << ", message:" << err.message << host;
+                throw std::invalid_argument( "aerospike_connect" );
+            }
 
         }
 
@@ -151,6 +176,10 @@ namespace gkvs {
         aerospike _as;
 
     };
+
+    Driver* create_aerospike_driver(const json &conf, const std::string &lua_path) {
+        return new AerospikeDriver(conf, lua_path);
+    }
 
 
 }

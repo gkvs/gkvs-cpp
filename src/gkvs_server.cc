@@ -28,8 +28,12 @@
 #include <grpcpp/server_builder.h>
 #include <grpcpp/server_context.h>
 #include <grpcpp/security/server_credentials.h>
+
+#include <glog/logging.h>
+
 #include "helper.h"
 #include "gkvs.grpc.pb.h"
+#include "driver.h"
 
 using grpc::Server;
 using grpc::ServerBuilder;
@@ -45,14 +49,19 @@ class GenericStoreImpl final : public gkvs::GenericStore::Service {
 
 public:
 
-    explicit GenericStoreImpl(const std::string &db) {
-
+    explicit GenericStoreImpl(gkvs::Driver *driver) {
+        _driver = driver;
     }
 
+    ~GenericStoreImpl() override {
+        delete _driver;
+    }
 
     Status getHead(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request,
                    ::gkvs::HeadResult *response) override {
 
+
+        _driver->getHead(request, response);
 
         response->mutable_status()->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
 
@@ -63,10 +72,14 @@ public:
     Status multiGetHead(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
                         ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
 
+        _driver->multiGetHead(request, writer);
+
         return Status::OK;
     }
 
     Status get(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::RecordResult *response) override {
+
+        _driver->get(request, response);
 
         response->mutable_status()->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
 
@@ -76,11 +89,15 @@ public:
     Status multiGet(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
                     ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
 
+        _driver->multiGet(request, writer);
+
         return Status::OK;
     }
 
     Status scanHead(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
                     ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
+
+        _driver->scanHead(request, writer);
 
         return Status::OK;
     }
@@ -88,10 +105,14 @@ public:
     Status scan(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
                 ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
 
+        _driver->scan(request, writer);
+
         return Status::OK;
     }
 
     Status put(::grpc::ServerContext *context, const ::gkvs::PutOperation *request, ::gkvs::Status *response) override {
+
+        _driver->put(request, response);
 
         response->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
 
@@ -101,6 +122,8 @@ public:
     Status compareAndPut(::grpc::ServerContext *context, const ::gkvs::PutOperation *request,
                          ::gkvs::Status *response) override {
 
+        _driver->compareAndPut(request, response);
+
         response->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
 
         return Status::OK;
@@ -109,10 +132,14 @@ public:
     Status putAll(::grpc::ServerContext *context,
                   ::grpc::ServerReaderWriter<::gkvs::Status, ::gkvs::PutOperation> *stream) override {
 
+        _driver->putAll(stream);
+
         return Status::OK;
     }
 
     Status remove(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::Status *response) override {
+
+        _driver->remove(request, response);
 
         response->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
 
@@ -122,17 +149,38 @@ public:
     Status removeAll(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
                      ::gkvs::Status *response) override {
 
+        _driver->removeAll(request, response);
+
         response->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
 
         return Status::OK;
     }
 
+private:
+    gkvs::Driver *_driver;
+
 };
 
 
 void RunServer(const std::string& db_path) {
+
+
+    json aerospike_conf = R"({
+
+    "cluster": {
+         "host" : "192.168.56.101",
+         "port" : 3000,
+         "username" : "",
+         "password" : ""
+     }
+
+    })"_json;
+
+
+  gkvs::Driver *driver = gkvs::create_aerospike_driver(aerospike_conf, ".");
+
   std::string server_address("0.0.0.0:4040");
-  GenericStoreImpl service(db_path);
+  GenericStoreImpl service(driver);
 
   ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
@@ -144,9 +192,11 @@ void RunServer(const std::string& db_path) {
 
 int main(int argc, char** argv) {
 
-  std::cout << "GKVS Server" << std::endl;
+    google::InitGoogleLogging(argv[0]);
 
-  RunServer(".");
+    std::cout << "GKVS Server" << std::endl;
 
-  return 0;
+    RunServer(".");
+
+    return 0;
 }

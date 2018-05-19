@@ -22,26 +22,34 @@
 #include <vector>
 #include "gkvs.grpc.pb.h"
 
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
+
 namespace gkvs {
 
     class Driver {
 
     public:
-        Driver();
-        virtual ~Driver();
-        virtual void getHead(const ::gkvs::KeyOperation* request, ::gkvs::HeadResult* response);
-        virtual void multiGetHead(const ::gkvs::BatchKeyOperation* request, ::grpc::ServerWriter< ::gkvs::HeadResult>* writer);
-        virtual void get(const ::gkvs::KeyOperation* request, ::gkvs::RecordResult* response);
-        virtual void multiGet(const ::gkvs::BatchKeyOperation* request, ::grpc::ServerWriter< ::gkvs::RecordResult>* writer);
-        virtual void scanHead(const ::gkvs::ScanOperation* request, ::grpc::ServerWriter< ::gkvs::HeadResult>* writer);
-        virtual void scan(const ::gkvs::ScanOperation* request, ::grpc::ServerWriter< ::gkvs::RecordResult>* writer);
-        virtual void put(const ::gkvs::PutOperation* request, ::gkvs::Status* response);
-        virtual void compareAndPut(const ::gkvs::PutOperation* request, ::gkvs::Status* response);
-        virtual void putAll(::grpc::ServerReaderWriter< ::gkvs::Status, ::gkvs::PutOperation>* stream);
-        virtual void remove(const ::gkvs::KeyOperation* request, ::gkvs::Status* response);
-        virtual void removeAll(const ::gkvs::BatchKeyOperation* request, ::gkvs::Status* response);
+        Driver() = default;
+        virtual ~Driver() = default;
+        virtual void getHead(const ::gkvs::KeyOperation* request, ::gkvs::HeadResult* response) = 0;
+        virtual void multiGetHead(const ::gkvs::BatchKeyOperation* request, ::grpc::ServerWriter< ::gkvs::HeadResult>* writer) = 0;
+        virtual void get(const ::gkvs::KeyOperation* request, ::gkvs::RecordResult* response) = 0;
+        virtual void multiGet(const ::gkvs::BatchKeyOperation* request, ::grpc::ServerWriter< ::gkvs::RecordResult>* writer) = 0;
+        virtual void scanHead(const ::gkvs::ScanOperation* request, ::grpc::ServerWriter< ::gkvs::HeadResult>* writer) = 0;
+        virtual void scan(const ::gkvs::ScanOperation* request, ::grpc::ServerWriter< ::gkvs::RecordResult>* writer) = 0;
+        virtual void put(const ::gkvs::PutOperation* request, ::gkvs::Status* response) = 0;
+        virtual void compareAndPut(const ::gkvs::PutOperation* request, ::gkvs::Status* response) = 0;
+        virtual void putAll(::grpc::ServerReaderWriter< ::gkvs::Status, ::gkvs::PutOperation>* stream) = 0;
+        virtual void remove(const ::gkvs::KeyOperation* request, ::gkvs::Status* response) = 0;
+        virtual void removeAll(const ::gkvs::BatchKeyOperation* request, ::gkvs::Status* response) = 0;
 
     };
 
 
+    Driver* create_aerospike_driver(const json &conf, const std::string &lua_path);
+
 }
+
+

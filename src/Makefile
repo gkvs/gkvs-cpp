@@ -22,17 +22,18 @@ CPPFLAGS += `pkg-config --cflags protobuf grpc`
 CPPFLAGS += -I../modules/nlohmann_json/single_include
 CXXFLAGS += -std=c++11
 ifeq ($(SYSTEM),Darwin)
-LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++`\
+LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog`\
            -lgrpc++_reflection\
            -ldl
 else
-LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++`\
+LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog`\
            -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed\
            -ldl
 endif
 PROTOC = protoc
 GRPC_CPP_PLUGIN = grpc_cpp_plugin
 GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
+AEROFLAGS = -DAS_USE_LIBEVENT -laerospike -levent -lssl -lcrypto -lpthread -lm -lz
 
 PROJECT=gkvs
 PROTOS_PATH = ../protos
@@ -45,7 +46,7 @@ $(PROJECT)_client: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_client.o help
 	$(CXX) $^ $(LDFLAGS) -o $@
 
 $(PROJECT)_server: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o
-	$(CXX) $^ $(LDFLAGS) /usr/local/lib/libaerospike.a -o $@
+	$(CXX) $^ $(LDFLAGS) $(AEROFLAGS) -o $@
 
 as_driver.o: as_driver.cc
 	$(CXX) $^ $(CXXFLAGS) -c -o $@
