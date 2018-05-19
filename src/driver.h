@@ -20,12 +20,28 @@
 
 #include <string>
 #include <vector>
-
+#include "gkvs.grpc.pb.h"
 
 namespace gkvs {
 
+    class Driver {
 
+    public:
+        Driver();
+        virtual ~Driver();
+        virtual void getHead(const ::gkvs::KeyOperation* request, ::gkvs::HeadResult* response);
+        virtual void multiGetHead(const ::gkvs::BatchKeyOperation* request, ::grpc::ServerWriter< ::gkvs::HeadResult>* writer);
+        virtual void get(const ::gkvs::KeyOperation* request, ::gkvs::RecordResult* response);
+        virtual void multiGet(const ::gkvs::BatchKeyOperation* request, ::grpc::ServerWriter< ::gkvs::RecordResult>* writer);
+        virtual void scanHead(const ::gkvs::ScanOperation* request, ::grpc::ServerWriter< ::gkvs::HeadResult>* writer);
+        virtual void scan(const ::gkvs::ScanOperation* request, ::grpc::ServerWriter< ::gkvs::RecordResult>* writer);
+        virtual void put(const ::gkvs::PutOperation* request, ::gkvs::Status* response);
+        virtual void compareAndPut(const ::gkvs::PutOperation* request, ::gkvs::Status* response);
+        virtual void putAll(::grpc::ServerReaderWriter< ::gkvs::Status, ::gkvs::PutOperation>* stream);
+        virtual void remove(const ::gkvs::KeyOperation* request, ::gkvs::Status* response);
+        virtual void removeAll(const ::gkvs::BatchKeyOperation* request, ::gkvs::Status* response);
 
+    };
 
 
 }

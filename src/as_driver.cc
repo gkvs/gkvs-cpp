@@ -33,12 +33,126 @@
 
 #include "driver.h"
 
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
+
 namespace gkvs {
 
 
+    static bool console_log_callback(as_log_level level, const char * func, const char * file, uint32_t line, const char * fmt, ...)
+    {
+        va_list ap;
+        va_start(ap, fmt);
+        vprintf(fmt, ap);
+        printf("\n");
+        va_end(ap);
+        return true;
+    }
+
+
+    class AerospikeDriver final : public Driver {
+
+    public:
+
+        explicit AerospikeDriver(const std::string &host, uint16_t port, const std::string &lua_path) : Driver() {
+
+            as_log_set_callback(console_log_callback);
+
+
+            // Initialize default lua configuration.
+            as_config_lua lua;
+            as_config_lua_init(&lua);
+
+            if (!lua_path.empty()) {
+
+                if (lua_path.length() < (AS_CONFIG_PATH_MAX_SIZE - 1)) {
+                    strcpy(lua.user_path, lua_path.data());
+                } else {
+                    std::cerr << "lua_path is too long: " << lua_path << std::endl;
+                }
+
+            }
+
+            // Initialize global lua configuration.
+            aerospike_init_lua(&lua);
+
+            as_config config;
+            as_config_init(&config);
+
+            if (! as_config_add_hosts(&config, host.data(), port)) {
+                std::cerr << "invalid host: " << host << std::endl;
+                throw std::invalid_argument( "invalid host" );
+            }
+
+            as_config_set_user(&config, "", "");
+
+        }
+
+        ~AerospikeDriver() override {
+
+            as_error err;
+
+            // Disconnect from the database cluster and clean up the aerospike object.
+            aerospike_close(&_as, &err);
+            aerospike_destroy(&_as);
+
+        }
+
+        void getHead(const ::gkvs::KeyOperation *request, ::gkvs::HeadResult *response) override {
+
+        }
+
+        void multiGetHead(const ::gkvs::BatchKeyOperation *request,
+                          ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
+
+        }
+
+        void get(const ::gkvs::KeyOperation *request, ::gkvs::RecordResult *response) override {
+
+        }
+
+        void multiGet(const ::gkvs::BatchKeyOperation *request,
+                      ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
+
+        }
+
+        void scanHead(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
+
+        }
+
+        void scan(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
+
+        }
+
+        void put(const ::gkvs::PutOperation *request, ::gkvs::Status *response) override {
+
+        }
+
+        void compareAndPut(const ::gkvs::PutOperation *request, ::gkvs::Status *response) override {
+
+        }
+
+        void putAll(::grpc::ServerReaderWriter<::gkvs::Status, ::gkvs::PutOperation> *stream) override {
+
+        }
+
+        void remove(const ::gkvs::KeyOperation *request, ::gkvs::Status *response) override {
+
+        }
+
+        void removeAll(const ::gkvs::BatchKeyOperation *request, ::gkvs::Status *response) override {
+
+        }
+
+
+    private:
+
+        aerospike _as;
+
+    };
+
 
 }
-
-
 
 

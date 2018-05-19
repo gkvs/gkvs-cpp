@@ -52,56 +52,79 @@ public:
 
     Status getHead(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request,
                    ::gkvs::HeadResult *response) override {
-      return Service::getHead(context, request, response);
+
+
+        response->mutable_status()->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
+
+        return Status::OK;
+
     }
 
     Status multiGetHead(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
                         ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
-      return Service::multiGetHead(context, request, writer);
+
+        return Status::OK;
     }
 
-    Status
-    get(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::RecordResult *response) override {
-      return Service::get(context, request, response);
+    Status get(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::RecordResult *response) override {
+
+        response->mutable_status()->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
+
+        return Status::OK;
     }
 
     Status multiGet(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
                     ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
-      return Service::multiGet(context, request, writer);
+
+        return Status::OK;
     }
 
     Status scanHead(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
                     ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
-      return Service::scanHead(context, request, writer);
+
+        return Status::OK;
     }
 
     Status scan(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
                 ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
-      return Service::scan(context, request, writer);
+
+        return Status::OK;
     }
 
     Status put(::grpc::ServerContext *context, const ::gkvs::PutOperation *request, ::gkvs::Status *response) override {
-      return Service::put(context, request, response);
+
+        response->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
+
+        return Status::OK;
     }
 
     Status compareAndPut(::grpc::ServerContext *context, const ::gkvs::PutOperation *request,
                          ::gkvs::Status *response) override {
-      return Service::compareAndPut(context, request, response);
+
+        response->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
+
+        return Status::OK;
     }
 
     Status putAll(::grpc::ServerContext *context,
                   ::grpc::ServerReaderWriter<::gkvs::Status, ::gkvs::PutOperation> *stream) override {
-      return Service::putAll(context, stream);
+
+        return Status::OK;
     }
 
-    Status
-    remove(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::Status *response) override {
-      return Service::remove(context, request, response);
+    Status remove(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::Status *response) override {
+
+        response->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
+
+        return Status::OK;
     }
 
     Status removeAll(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
                      ::gkvs::Status *response) override {
-      return Service::removeAll(context, request, response);
+
+        response->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
+
+        return Status::OK;
     }
 
 };
