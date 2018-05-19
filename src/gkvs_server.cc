@@ -29,6 +29,7 @@
 #include <grpcpp/server_context.h>
 #include <grpcpp/security/server_credentials.h>
 
+#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "helper.h"
@@ -194,14 +195,16 @@ int main(int argc, char** argv) {
 
     google::InitGoogleLogging(argv[0]);
 
-    //google::ParseCommandLineFlags(&argc, &argv,
-    //        /*remove_flags=*/true);
+    gflags::SetUsageMessage("GKVS Server)");
+    gflags::SetVersionString("0.1");
 
-    std::cout << "GKVS Server" << ", args: " << argv[0] << std::endl;
+    gflags::ParseCommandLineFlags(&argc, &argv,
+            /*remove_flags=*/true);
 
     RunServer(".");
 
     google::ShutdownGoogleLogging();
+    gflags::ShutDownCommandLineFlags();
 
     return 0;
 }

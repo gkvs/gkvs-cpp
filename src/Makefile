@@ -22,11 +22,11 @@ CPPFLAGS += `pkg-config --cflags protobuf grpc`
 CPPFLAGS += -I../modules/nlohmann_json/single_include
 CXXFLAGS += -std=c++11
 ifeq ($(SYSTEM),Darwin)
-LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog`\
+LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags`\
            -lgrpc++_reflection\
            -ldl
 else
-LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog`\
+LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags`\
            -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed\
            -ldl
 endif

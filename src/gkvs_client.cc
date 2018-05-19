@@ -44,14 +44,19 @@ using grpc::Status;
 
 int main(int argc, char** argv) {
 
-  google::InitGoogleLogging(argv[0]);
+    google::InitGoogleLogging(argv[0]);
 
-  //google::ParseCommandLineFlags(&argc, &argv,
-  //          /*remove_flags=*/true);
+    gflags::SetUsageMessage("GKVS Server)");
+    gflags::SetVersionString("0.1");
 
-  std::cout << "GKVS Client" << std::endl;
+    gflags::ParseCommandLineFlags(&argc, &argv,
+            /*remove_flags=*/true);
 
-  google::ShutdownGoogleLogging();
 
-  return 0;
+    std::cout << "GKVS Client" << std::endl;
+
+    google::ShutdownGoogleLogging();
+    gflags::ShutDownCommandLineFlags();
+
+    return 0;
 }
