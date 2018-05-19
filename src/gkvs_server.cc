@@ -194,9 +194,14 @@ int main(int argc, char** argv) {
 
     google::InitGoogleLogging(argv[0]);
 
-    std::cout << "GKVS Server" << std::endl;
+    //google::ParseCommandLineFlags(&argc, &argv,
+    //        /*remove_flags=*/true);
+
+    std::cout << "GKVS Server" << ", args: " << argv[0] << std::endl;
 
     RunServer(".");
+
+    google::ShutdownGoogleLogging();
 
     return 0;
 }

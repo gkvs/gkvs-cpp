@@ -31,6 +31,9 @@
 #include "helper.h"
 #include "gkvs.grpc.pb.h"
 
+#include <glog/logging.h>
+#include "gflags/gflags.h"
+
 using grpc::Channel;
 using grpc::ClientContext;
 using grpc::ClientReader;
@@ -41,7 +44,14 @@ using grpc::Status;
 
 int main(int argc, char** argv) {
 
+  google::InitGoogleLogging(argv[0]);
+
+  //google::ParseCommandLineFlags(&argc, &argv,
+  //          /*remove_flags=*/true);
+
   std::cout << "GKVS Client" << std::endl;
+
+  google::ShutdownGoogleLogging();
 
   return 0;
 }

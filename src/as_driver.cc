@@ -39,19 +39,12 @@
 
 using json = nlohmann::json;
 
+
+#define AS_MAX_LOG_STR 1024
+static bool glog_callback(as_log_level level, const char * func, const char * file, uint32_t line, const char * fmt, ...);
+
+
 namespace gkvs {
-
-
-    static bool console_log_callback(as_log_level level, const char * func, const char * file, uint32_t line, const char * fmt, ...)
-    {
-        va_list ap;
-        va_start(ap, fmt);
-        vprintf(fmt, ap);
-        printf("\n");
-        va_end(ap);
-        return true;
-    }
-
 
     class AerospikeDriver final : public Driver {
 
@@ -59,7 +52,7 @@ namespace gkvs {
 
         explicit AerospikeDriver(const json &conf, const std::string &lua_path) : Driver() {
 
-            as_log_set_callback(console_log_callback);
+            as_log_set_callback(glog_callback);
 
 
             // Initialize default lua configuration.
@@ -121,6 +114,8 @@ namespace gkvs {
             // Disconnect from the database cluster and clean up the aerospike object.
             aerospike_close(&_as, &err);
             aerospike_destroy(&_as);
+
+            std::cout << "Graceful shutdown aerospike connection" << std::endl;
 
         }
 
@@ -184,4 +179,47 @@ namespace gkvs {
 
 }
 
+static bool glog_callback(as_log_level level, const char * func, const char * file, uint32_t line, const char * fmt, ...)
+{
+
+    va_list ap;
+    va_start(ap, fmt);
+    // allocate in heap to avoid stack overflow by untrusted vsnprintf function
+    char *str = new char[AS_MAX_LOG_STR];
+    int affected = vsnprintf(str, AS_MAX_LOG_STR-1, fmt, ap);
+    if (affected > 0) {
+
+        switch(level) {
+
+            case AS_LOG_LEVEL_ERROR:
+                LOG(ERROR) << str << std::endl;
+                break;
+
+            case AS_LOG_LEVEL_WARN:
+                LOG(WARNING) << str << std::endl;
+                break;
+
+            case AS_LOG_LEVEL_INFO:
+                LOG(INFO) << str << std::endl;
+                break;
+
+            case AS_LOG_LEVEL_DEBUG:
+                DLOG(INFO) << str << std::endl;
+                break;
+
+            case AS_LOG_LEVEL_TRACE:
+                VLOG(0) << str << std::endl;
+                break;
+
+            default:
+                LOG(ERROR) << "unknown log level: " << level << ", msg: " << str << std::endl;
+                break;
+
+        }
+
+    }
+    va_end(ap);
+    delete [] str;
+    return true;
+}
 
