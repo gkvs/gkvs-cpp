@@ -162,6 +162,8 @@ private:
 
 };
 
+DEFINE_string(lua_dir, "", "User lua scripts directory for Aerospike");
+
 
 void RunServer(const std::string& db_path) {
 
@@ -178,7 +180,7 @@ void RunServer(const std::string& db_path) {
     })"_json;
 
 
-  gkvs::Driver *driver = gkvs::create_aerospike_driver(aerospike_conf, ".");
+  gkvs::Driver *driver = gkvs::create_aerospike_driver(aerospike_conf, FLAGS_lua_dir);
 
   std::string server_address("0.0.0.0:4040");
   GenericStoreImpl service(driver);
@@ -191,15 +193,18 @@ void RunServer(const std::string& db_path) {
   server->Wait();
 }
 
+
 int main(int argc, char** argv) {
 
     google::InitGoogleLogging(argv[0]);
 
-    gflags::SetUsageMessage("GKVS Server)");
+    gflags::SetUsageMessage("gKVS Server)");
     gflags::SetVersionString("0.1");
 
     gflags::ParseCommandLineFlags(&argc, &argv,
             /*remove_flags=*/true);
+
+    std::cout << "gKVS Server lua_dir:" <<  FLAGS_lua_dir << std::endl;
 
     RunServer(".");
 

@@ -50,7 +50,7 @@ namespace gkvs {
 
     public:
 
-        explicit AerospikeDriver(const json &conf, const std::string &lua_path) : Driver() {
+        explicit AerospikeDriver(const json &conf, const std::string &lua_dir) : Driver() {
 
             as_log_set_callback(glog_callback);
 
@@ -59,17 +59,17 @@ namespace gkvs {
             as_config_lua lua;
             as_config_lua_init(&lua);
 
-            if (!lua_path.empty()) {
+            if (!lua_dir.empty()) {
 
-                if (lua_path.length() < (AS_CONFIG_PATH_MAX_SIZE - 1)) {
-                    strcpy(lua.user_path, lua_path.data());
+                if (lua_dir.length() < (AS_CONFIG_PATH_MAX_SIZE - 1)) {
+                    strncpy(lua.user_path, lua_dir.data(), AS_CONFIG_PATH_MAX_SIZE);
                 } else {
-                    LOG(ERROR) << "lua_path is too long: " << lua_path;
+                    LOG(ERROR) << "lua_dir is too long: " << lua_dir;
                 }
 
             }
             else {
-                LOG(INFO) << "lua_path is empty ";
+                LOG(INFO) << "lua_dir is empty ";
             }
 
             // Initialize global lua configuration.
@@ -186,7 +186,7 @@ static bool glog_callback(as_log_level level, const char * func, const char * fi
     va_start(ap, fmt);
     // allocate in heap to avoid stack overflow by untrusted vsnprintf function
     char *str = new char[AS_MAX_LOG_STR];
-    int affected = vsnprintf(str, AS_MAX_LOG_STR-1, fmt, ap);
+    int affected = vsnprintf(str, AS_MAX_LOG_STR, fmt, ap);
     if (affected > 0) {
 
         switch(level) {

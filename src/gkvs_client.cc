@@ -46,14 +46,14 @@ int main(int argc, char** argv) {
 
     google::InitGoogleLogging(argv[0]);
 
-    gflags::SetUsageMessage("GKVS Server)");
+    gflags::SetUsageMessage("gKVS Server)");
     gflags::SetVersionString("0.1");
 
     gflags::ParseCommandLineFlags(&argc, &argv,
             /*remove_flags=*/true);
 
 
-    std::cout << "GKVS Client" << std::endl;
+    std::cout << "gKVS Client" << std::endl;
 
     google::ShutdownGoogleLogging();
     gflags::ShutDownCommandLineFlags();
