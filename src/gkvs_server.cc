@@ -45,122 +45,268 @@ using grpc::ServerWriter;
 using grpc::Status;
 using std::chrono::system_clock;
 
-
-class GenericStoreImpl final : public gkvs::GenericStore::Service {
-
-public:
-
-    explicit GenericStoreImpl(gkvs::Driver *driver) {
-        _driver = driver;
-    }
-
-    ~GenericStoreImpl() override {
-        delete _driver;
-    }
-
-    Status getHead(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request,
-                   ::gkvs::HeadResult *response) override {
+namespace gkvs {
 
 
-        _driver->getHead(request, response);
+    class GenericStoreImpl final : public gkvs::GenericStore::Service {
 
-        response->mutable_status()->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
+    public:
 
-        return Status::OK;
+        explicit GenericStoreImpl(gkvs::Driver *driver) {
+            _driver = driver;
+        }
 
-    }
+        ~GenericStoreImpl() override {
+            delete _driver;
+        }
 
-    Status multiGetHead(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
+        grpc::Status getHead(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request,
+                       ::gkvs::HeadResult *response) override {
+
+            if (!request->has_key()) {
+                set_bad_request("no key", response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            if (!request->has_op()) {
+                set_bad_request("no op", response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            if (!check_key(request->key(), response->mutable_status())) {
+                return grpc::Status::OK;
+            }
+
+            _driver->getHead(request, response);
+
+            return grpc::Status::OK;
+
+        }
+
+        grpc::Status multiGetHead(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
+                            ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
+
+            if (!request->has_ops()) {
+
+                HeadResult result;
+                result.mutable_status()->set_code(Status_Code_SUCCESS_END_STREAM);
+
+                writer->WriteLast(result, grpc::WriteOptions());
+
+                return grpc::Status::OK;
+            }
+
+
+            _driver->multiGetHead(request, writer);
+
+            return grpc::Status::OK;
+        }
+
+        grpc::Status get(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request,
+                   ::gkvs::RecordResult *response) override {
+
+            if (!request->has_key()) {
+                set_bad_request("no key", response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            if (!request->has_op()) {
+                set_bad_request("no op", response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            if (!check_key(request->key(), response->mutable_status())) {
+                return grpc::Status::OK;
+            }
+
+            _driver->get(request, response);
+
+            return grpc::Status::OK;
+        }
+
+        grpc::Status multiGet(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
+                        ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
+
+            if (!request->has_ops()) {
+
+                RecordResult result;
+                result.mutable_status()->set_code(Status_Code_SUCCESS_END_STREAM);
+
+                writer->WriteLast(result, grpc::WriteOptions());
+
+                return grpc::Status::OK;
+            }
+
+            _driver->multiGet(request, writer);
+
+            return grpc::Status::OK;
+        }
+
+        grpc::Status scanHead(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
                         ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
 
-        _driver->multiGetHead(request, writer);
 
-        return Status::OK;
-    }
+            if (request->tablename().empty()) {
 
-    Status get(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::RecordResult *response) override {
+                HeadResult result;
+                result.mutable_status()->set_code(Status_Code_ERROR_BAD_REQUEST);
 
-        _driver->get(request, response);
+                writer->WriteLast(result, grpc::WriteOptions());
 
-        response->mutable_status()->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
+                return grpc::Status::OK;
+            }
 
-        return Status::OK;
-    }
+            _driver->scanHead(request, writer);
 
-    Status multiGet(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
+            return grpc::Status::OK;
+        }
+
+        grpc::Status scan(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
                     ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
 
-        _driver->multiGet(request, writer);
+            if (request->tablename().empty()) {
 
-        return Status::OK;
-    }
+                RecordResult result;
+                result.mutable_status()->set_code(Status_Code_ERROR_BAD_REQUEST);
 
-    Status scanHead(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
-                    ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
+                writer->WriteLast(result, grpc::WriteOptions());
 
-        _driver->scanHead(request, writer);
+                return grpc::Status::OK;
+            }
 
-        return Status::OK;
-    }
+            _driver->scan(request, writer);
 
-    Status scan(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
-                ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
+            return grpc::Status::OK;
+        }
 
-        _driver->scan(request, writer);
+        grpc::Status
+        put(::grpc::ServerContext *context, const ::gkvs::PutOperation *request, ::gkvs::Status *response) override {
 
-        return Status::OK;
-    }
+            if (!request->has_key()) {
+                set_bad_request("no key", response);
+                return grpc::Status::OK;
+            }
 
-    Status put(::grpc::ServerContext *context, const ::gkvs::PutOperation *request, ::gkvs::Status *response) override {
+            if (!request->has_record()) {
+                set_bad_request("no record", response);
+                return grpc::Status::OK;
+            }
 
-        _driver->put(request, response);
+            if (!request->has_op()) {
+                set_bad_request("no op", response);
+                return grpc::Status::OK;
+            }
 
-        response->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
+            if (!check_key(request->key(), response)) {
+                return grpc::Status::OK;
+            }
 
-        return Status::OK;
-    }
+            _driver->put(request, response);
 
-    Status compareAndPut(::grpc::ServerContext *context, const ::gkvs::PutOperation *request,
+            return grpc::Status::OK;
+        }
+
+        grpc::Status compareAndPut(::grpc::ServerContext *context, const ::gkvs::PutOperation *request,
+                             ::gkvs::Status *response) override {
+
+            if (!request->has_key()) {
+                set_bad_request("no key", response);
+                return grpc::Status::OK;
+            }
+
+            if (!request->has_record()) {
+                set_bad_request("no record", response);
+                return grpc::Status::OK;
+            }
+
+            if (!request->has_op()) {
+                set_bad_request("no op", response);
+                return grpc::Status::OK;
+            }
+
+            if (!check_key(request->key(), response)) {
+                return grpc::Status::OK;
+            }
+
+            _driver->compareAndPut(request, response);
+
+            return grpc::Status::OK;
+        }
+
+        grpc::Status putAll(::grpc::ServerContext *context,
+                      ::grpc::ServerReaderWriter<::gkvs::Status, ::gkvs::PutOperation> *stream) override {
+
+            _driver->putAll(stream);
+
+            return grpc::Status::OK;
+        }
+
+        grpc::Status
+        remove(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::Status *response) override {
+
+            if (!request->has_key()) {
+                set_bad_request("no key", response);
+                return grpc::Status::OK;
+            }
+
+            if (!request->has_op()) {
+                set_bad_request("no op", response);
+                return grpc::Status::OK;
+            }
+
+            if (!check_key(request->key(), response)) {
+                return grpc::Status::OK;
+            }
+
+            _driver->remove(request, response);
+
+            return grpc::Status::OK;
+        }
+
+        grpc::Status removeAll(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
                          ::gkvs::Status *response) override {
 
-        _driver->compareAndPut(request, response);
+            _driver->removeAll(request, response);
 
-        response->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
+            return grpc::Status::OK;
+        }
 
-        return Status::OK;
-    }
+    private:
+        gkvs::Driver *_driver;
 
-    Status putAll(::grpc::ServerContext *context,
-                  ::grpc::ServerReaderWriter<::gkvs::Status, ::gkvs::PutOperation> *stream) override {
 
-        _driver->putAll(stream);
 
-        return Status::OK;
-    }
+    protected:
 
-    Status remove(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::Status *response) override {
 
-        _driver->remove(request, response);
+        bool check_key(const ::gkvs::Key &key, Status *status) {
 
-        response->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
+            if (key.tablename().empty()) {
+                set_bad_request("empty tableName", status);
+                return false;
+            }
 
-        return Status::OK;
-    }
+            if (key.recordRef_case() == Key::RecordRefCase::kRecordKey) {
+                if (key.recordkey().empty()) {
+                    set_bad_request("empty recordKey", status);
+                    return false;
+                }
+            }
 
-    Status removeAll(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
-                     ::gkvs::Status *response) override {
+            return true;
+        }
 
-        _driver->removeAll(request, response);
+        void set_bad_request(std::string errorMessage, Status *status) {
+            status->set_code(Status_Code_ERROR_BAD_REQUEST);
+            status->set_errorcode(Status_Code_ERROR_BAD_REQUEST);
+            status->set_errormessage(errorMessage);
+        }
 
-        response->set_code(::gkvs::Status_Code::Status_Code_SUCCESS);
 
-        return Status::OK;
-    }
+    };
 
-private:
-    gkvs::Driver *_driver;
 
-};
+}
 
 DEFINE_string(lua_dir, "", "User lua scripts directory for Aerospike");
 
@@ -169,6 +315,8 @@ void RunServer(const std::string& db_path) {
 
 
     json aerospike_conf = R"({
+
+    "namespace": "test",
 
     "cluster": {
          "host" : "192.168.56.101",
@@ -183,7 +331,7 @@ void RunServer(const std::string& db_path) {
   gkvs::Driver *driver = gkvs::create_aerospike_driver(aerospike_conf, FLAGS_lua_dir);
 
   std::string server_address("0.0.0.0:4040");
-  GenericStoreImpl service(driver);
+  gkvs::GenericStoreImpl service(driver);
 
   ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
