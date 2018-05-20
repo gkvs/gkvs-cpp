@@ -255,6 +255,8 @@ namespace gkvs {
 
         void remove(const ::gkvs::KeyOperation *request, ::gkvs::Status *response) override {
 
+            do_remove(request, response);
+
         }
 
         void removeAll(const ::gkvs::BatchKeyOperation *request, ::gkvs::Status *response) override {
@@ -434,6 +436,11 @@ namespace gkvs {
                 wpol.base.total_timeout = request->op().timeoutmls();
             }
             wpol.base.max_retries = 1;
+
+            // save the key if sent
+            if (recordKey.recordRef_case() == Key::RecordRefCase::kRecordKey) {
+                wpol.key = AS_POLICY_KEY_SEND;
+            }
             wpol.exists = AS_POLICY_EXISTS_IGNORE;
             wpol.commit_level = AS_POLICY_COMMIT_LEVEL_ALL;
 
@@ -463,6 +470,44 @@ namespace gkvs {
 
             as_record_destroy(&rec);
         }
+
+        void do_remove(const ::gkvs::KeyOperation *request, ::gkvs::Status *response) {
+
+            as_key key;
+
+            const Key& recordKey = request->key();
+
+            if (!init_key(recordKey, key, response)) {
+                return;
+            }
+
+            as_policy_remove rpol;
+            as_policy_remove_init(&rpol);
+
+            int timeout = request->op().timeoutmls();
+            if (timeout > 0) {
+                rpol.base.total_timeout = request->op().timeoutmls();
+            }
+            rpol.base.max_retries = 1;
+            rpol.durable_delete = true;
+            rpol.commit_level = AS_POLICY_COMMIT_LEVEL_ALL;
+
+            as_error err;
+            as_status status;
+
+            status = aerospike_key_remove(&_as, &err, &rpol, &key);
+
+            if (status == AEROSPIKE_OK) {
+
+                success(response);
+
+            }
+            else {
+                error(err, response);
+            }
+
+        }
+
 
     };
 
