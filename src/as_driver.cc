@@ -239,9 +239,13 @@ namespace gkvs {
 
         void put(const ::gkvs::PutOperation *request, ::gkvs::Status *response) override {
 
+            do_put(request, response, false);
+
         }
 
         void compareAndPut(const ::gkvs::PutOperation *request, ::gkvs::Status *response) override {
+
+            do_put(request, response, true);
 
         }
 
@@ -398,6 +402,66 @@ namespace gkvs {
                 }
             }
 
+        }
+
+        void do_put(const ::gkvs::PutOperation *request, ::gkvs::Status *response, bool compareAndPut) {
+
+            as_key key;
+
+            const Key& recordKey = request->key();
+
+            if (!init_key(recordKey, key, response)) {
+                return;
+            }
+
+            const Record& record = request->record();
+
+            int size = record.columns().size();
+
+            as_record rec;
+            as_record_inita(&rec, size);
+
+            for (auto i = record.columns().begin(); i != record.columns().end(); ++i) {
+
+                as_record_set_raw(&rec, i->first.c_str(), (uint8_t*) i->second.c_str(), i->second.size());
+            }
+
+            as_policy_write wpol;
+            as_policy_write_init(&wpol);
+
+            int timeout = request->op().timeoutmls();
+            if (timeout > 0) {
+                wpol.base.total_timeout = request->op().timeoutmls();
+            }
+            wpol.base.max_retries = 1;
+            wpol.exists = AS_POLICY_EXISTS_IGNORE;
+            wpol.commit_level = AS_POLICY_COMMIT_LEVEL_ALL;
+
+            if (compareAndPut) {
+                wpol.gen = AS_POLICY_GEN_IGNORE;
+                rec.gen = static_cast<uint16_t>(record.version());
+            }
+
+            as_error err;
+            as_status status;
+
+            status = aerospike_key_put(&_as, &err, &wpol, &key, &rec);
+
+            if (status == AEROSPIKE_OK) {
+
+                success(response);
+
+            }
+            else if (status == AEROSPIKE_ERR_RECORD_GENERATION && compareAndPut) {
+
+                response->set_code(Status_Code_SUCCESS_NOT_UPDATED);
+
+            }
+            else {
+                error(err, response);
+            }
+
+            as_record_destroy(&rec);
         }
 
     };
