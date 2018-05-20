@@ -420,16 +420,20 @@ namespace gkvs {
 
             int size = record.columns().size();
 
-            as_record rec;
-            as_record_inita(&rec, size);
+            as_record* rec = as_record_new(size);
 
             for (auto i = record.columns().begin(); i != record.columns().end(); ++i) {
 
-                as_record_set_raw(&rec, i->first.c_str(), (uint8_t*) i->second.c_str(), i->second.size());
+                as_record_set_raw(rec, i->first.c_str(), (uint8_t*) i->second.c_str(), i->second.size());
             }
 
             as_policy_write wpol;
             as_policy_write_init(&wpol);
+
+            int ttl = request->ttlsec();
+            if (ttl > 0) {
+                rec->ttl = ttl;
+            }
 
             int timeout = request->op().timeoutmls();
             if (timeout > 0) {
@@ -446,13 +450,13 @@ namespace gkvs {
 
             if (compareAndPut) {
                 wpol.gen = AS_POLICY_GEN_IGNORE;
-                rec.gen = static_cast<uint16_t>(record.version());
+                rec->gen = static_cast<uint16_t>(record.version());
             }
 
             as_error err;
             as_status status;
 
-            status = aerospike_key_put(&_as, &err, &wpol, &key, &rec);
+            status = aerospike_key_put(&_as, &err, &wpol, &key, rec);
 
             if (status == AEROSPIKE_OK) {
 
@@ -468,7 +472,7 @@ namespace gkvs {
                 error(err, response);
             }
 
-            as_record_destroy(&rec);
+            as_record_destroy(rec);
         }
 
         void do_remove(const ::gkvs::KeyOperation *request, ::gkvs::Status *response) {
