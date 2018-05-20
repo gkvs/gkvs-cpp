@@ -64,12 +64,12 @@ namespace gkvs {
                        ::gkvs::HeadResult *response) override {
 
             if (!request->has_key()) {
-                set_bad_request("no key", response->mutable_status());
+                bad_request("no key", response->mutable_status());
                 return grpc::Status::OK;
             }
 
             if (!request->has_op()) {
-                set_bad_request("no op", response->mutable_status());
+                bad_request("no op", response->mutable_status());
                 return grpc::Status::OK;
             }
 
@@ -106,12 +106,12 @@ namespace gkvs {
                    ::gkvs::RecordResult *response) override {
 
             if (!request->has_key()) {
-                set_bad_request("no key", response->mutable_status());
+                bad_request("no key", response->mutable_status());
                 return grpc::Status::OK;
             }
 
             if (!request->has_op()) {
-                set_bad_request("no op", response->mutable_status());
+                bad_request("no op", response->mutable_status());
                 return grpc::Status::OK;
             }
 
@@ -183,17 +183,17 @@ namespace gkvs {
         put(::grpc::ServerContext *context, const ::gkvs::PutOperation *request, ::gkvs::Status *response) override {
 
             if (!request->has_key()) {
-                set_bad_request("no key", response);
+                bad_request("no key", response);
                 return grpc::Status::OK;
             }
 
             if (!request->has_record()) {
-                set_bad_request("no record", response);
+                bad_request("no record", response);
                 return grpc::Status::OK;
             }
 
             if (!request->has_op()) {
-                set_bad_request("no op", response);
+                bad_request("no op", response);
                 return grpc::Status::OK;
             }
 
@@ -210,17 +210,17 @@ namespace gkvs {
                              ::gkvs::Status *response) override {
 
             if (!request->has_key()) {
-                set_bad_request("no key", response);
+                bad_request("no key", response);
                 return grpc::Status::OK;
             }
 
             if (!request->has_record()) {
-                set_bad_request("no record", response);
+                bad_request("no record", response);
                 return grpc::Status::OK;
             }
 
             if (!request->has_op()) {
-                set_bad_request("no op", response);
+                bad_request("no op", response);
                 return grpc::Status::OK;
             }
 
@@ -245,12 +245,12 @@ namespace gkvs {
         remove(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::Status *response) override {
 
             if (!request->has_key()) {
-                set_bad_request("no key", response);
+                bad_request("no key", response);
                 return grpc::Status::OK;
             }
 
             if (!request->has_op()) {
-                set_bad_request("no op", response);
+                bad_request("no op", response);
                 return grpc::Status::OK;
             }
 
@@ -282,13 +282,13 @@ namespace gkvs {
         bool check_key(const ::gkvs::Key &key, Status *status) {
 
             if (key.tablename().empty()) {
-                set_bad_request("empty tableName", status);
+                bad_request("empty tableName", status);
                 return false;
             }
 
             if (key.recordRef_case() == Key::RecordRefCase::kRecordKey) {
                 if (key.recordkey().empty()) {
-                    set_bad_request("empty recordKey", status);
+                    bad_request("empty recordKey", status);
                     return false;
                 }
             }
@@ -296,7 +296,7 @@ namespace gkvs {
             return true;
         }
 
-        void set_bad_request(std::string errorMessage, Status *status) {
+        void bad_request(const char *errorMessage, Status *status) {
             status->set_code(Status_Code_ERROR_BAD_REQUEST);
             status->set_errorcode(Status_Code_ERROR_BAD_REQUEST);
             status->set_errormessage(errorMessage);

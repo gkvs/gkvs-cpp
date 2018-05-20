@@ -28,6 +28,7 @@
 #include <aerospike/aerospike_key.h>
 #include <aerospike/as_error.h>
 #include <aerospike/as_record.h>
+#include <aerospike/as_record_iterator.h>
 #include <aerospike/as_sleep.h>
 #include <aerospike/as_status.h>
 
@@ -71,7 +72,7 @@ namespace gkvs {
             if (!lua_dir.empty()) {
 
                 if (lua_dir.length() < (AS_CONFIG_PATH_MAX_SIZE - 1)) {
-                    strncpy(lua.user_path, lua_dir.data(), AS_CONFIG_PATH_MAX_SIZE);
+                    strncpy(lua.user_path, lua_dir.c_str(), AS_CONFIG_PATH_MAX_SIZE);
                 } else {
                     LOG(ERROR) << "lua_dir is too long: " << lua_dir;
                 }
@@ -94,7 +95,7 @@ namespace gkvs {
             std::string host = cluster["host"].get<std::string>();
             int port = cluster["port"].get<int>();
 
-            if (! as_config_add_hosts(&config, host.data(), port)) {
+            if (! as_config_add_hosts(&config, host.c_str(), (uint16_t) port)) {
                 LOG(ERROR) << "invalid host: " << host;
                 throw std::invalid_argument( "invalid host" );
             }
@@ -102,7 +103,7 @@ namespace gkvs {
             std::string username = cluster["username"].get<std::string>();
             std::string password = cluster["password"].get<std::string>();
 
-            as_config_set_user(&config, username.data(), password.data());
+            as_config_set_user(&config, username.c_str(), password.c_str());
 
             //memcpy(&config.tls, &g_tls, sizeof(as_config_tls));
             //config.auth_mode = g_auth_mode;
@@ -135,56 +136,29 @@ namespace gkvs {
 
             as_key key;
 
-            const Key &requestKey = request->key();
-
-            std::string tableName = requestKey.tablename();
-
-            switch(requestKey.recordRef_case()) {
-
-                case Key::RecordRefCase::kRecordKey:
-                    as_key_init_str(&key, _namespace.data(), tableName.data(), requestKey.recordkey().data());
-                    break;
-
-                case Key::RecordRefCase::kRecordHash:
-                    //uint8_t digest[AS_DIGEST_VALUE_SIZE];
-                    if (requestKey.recordhash().length() != AS_DIGEST_VALUE_SIZE) {
-                        bad_request("record_hash must be 20 bytes", response->mutable_status());
-                        return;
-                    }
-                    as_key_init_digest(&key, _namespace.data(), tableName.data(), (const uint8_t*) requestKey.recordhash().data());
-                    break;
-
-                case Key::RecordRefCase::RECORDREF_NOT_SET:
-                    bad_request("no record_key", response->mutable_status());
-                    return;
-
+            if (!init_key(request->key(), key, response->mutable_status())) {
+                return;
             }
 
-
-            as_record* rec;
+            as_record* rec = NULL;
             as_error err;
 
             as_status status = aerospike_key_exists(&_as, &err, NULL, &key, &rec);
 
             if (status == AEROSPIKE_OK) {
 
-                Head* head = response->mutable_head();
-                head->set_version(rec->gen);
-
-                for (int i = 0; i != rec->bins.size; ++i) {
-                    as_bin bin = rec->bins.entries[i];
-                    std::string columnKey = bin.name;
-                    head->add_columnkey(columnKey);
+                if (rec) {
+                    fill_head(rec, response->mutable_head());
+                    as_record_destroy(rec);
                 }
-
-                as_record_destroy(rec);
 
                 success(response->mutable_status());
 
             }
             else if (status == AEROSPIKE_ERR_RECORD_NOT_FOUND) {
 
-                // return no head, means no record was found
+                // return no head, means no record was found, this is not an error, it is like a map interface for records
+                // not like database interface
 
                 success(response->mutable_status());
             }
@@ -200,6 +174,53 @@ namespace gkvs {
         }
 
         void get(const ::gkvs::KeyOperation *request, ::gkvs::RecordResult *response) override {
+
+            as_key key;
+
+            const Key& recordKey = request->key();
+
+            if (!init_key(recordKey, key, response->mutable_status())) {
+                return;
+            }
+
+            as_record* rec = NULL;
+            as_error err;
+            as_status status;
+
+            int size = recordKey.columnkey_size();
+            if (size == 0) {
+
+                status = aerospike_key_get(&_as, &err, NULL, &key, &rec);
+
+            }
+            else {
+                const char** bins = allocate_bins(recordKey);
+                status = aerospike_key_select(&_as, &err, NULL, &key, bins, &rec);
+                delete [] bins;
+            }
+
+
+            if (status == AEROSPIKE_OK) {
+
+                if (rec) {
+                    fill_record(rec, response->mutable_record());
+                    as_record_destroy(rec);
+
+                }
+
+                success(response->mutable_status());
+
+            }
+            else if (status == AEROSPIKE_ERR_RECORD_NOT_FOUND) {
+
+                // return no record, means no record was found, this is not an error, it is like a map interface for records
+                // not like database interface
+
+                success(response->mutable_status());
+            }
+            else {
+                error(err, response->mutable_status());
+            }
 
         }
 
@@ -249,7 +270,7 @@ namespace gkvs {
             status->set_code(Status_Code_SUCCESS);
         }
 
-        void bad_request(std::string errorMessage, Status *status) {
+        void bad_request(const char* errorMessage, Status *status) {
             status->set_code(Status_Code_ERROR_BAD_REQUEST);
             status->set_errorcode(Status_Code_ERROR_BAD_REQUEST);
             status->set_errormessage(errorMessage);
@@ -265,6 +286,119 @@ namespace gkvs {
 
         }
 
+        void driver_error(const char* errorMessage, Status *status) {
+            status->set_code(Status_Code_ERROR_DRIVER);
+            status->set_errorcode(Status_Code_ERROR_DRIVER);
+            status->set_errormessage(errorMessage);
+        }
+
+        bool init_key(const Key &requestKey, as_key& key, Status* status) {
+
+            const std::string& tableName = requestKey.tablename();
+
+            switch(requestKey.recordRef_case()) {
+
+                case Key::RecordRefCase::kRecordKey:
+                    if (!as_key_init_str(&key, _namespace.c_str(), tableName.c_str(), requestKey.recordkey().c_str())) {
+                        driver_error("as_key_init_str fail", status);
+                        return false;
+                    }
+                    break;
+
+                case Key::RecordRefCase::kRecordHash: {
+                    //uint8_t digest[AS_DIGEST_VALUE_SIZE];
+                    if (requestKey.recordhash().length() != AS_DIGEST_VALUE_SIZE) {
+                        bad_request("record_hash must be 20 bytes", status);
+                        return false;
+                    }
+                    const uint8_t *hash = (const uint8_t *) requestKey.recordhash().c_str();
+                    if (!as_key_init_digest(&key, _namespace.c_str(), tableName.c_str(), hash)) {
+                        driver_error("as_key_init_digest fail", status);
+                        return false;
+                    }
+                    break;
+                }
+
+                default:
+                    bad_request("no record_key", status);
+                    return false;
+
+            }
+
+            return true;
+        }
+
+
+        const char** allocate_bins(const Key& key) {
+
+            int size = key.columnkey_size();
+
+            const char** bins = new const char*[size+1];
+
+            for (int i = 0; i != size; ++i) {
+                bins[i] = key.columnkey(i).c_str();
+            }
+
+            bins[size] = NULL;
+
+            return bins;
+        }
+
+        void fill_head(as_record* rec, Head* head) {
+
+            head->set_version(rec->gen);
+
+            //uint16_t num_bins = as_record_numbins(rec);
+
+            as_record_iterator it;
+            as_record_iterator_init(&it, rec);
+
+            while (as_record_iterator_has_next(&it)) {
+                const as_bin* bin = as_record_iterator_next(&it);
+                head->add_columnkey(as_bin_get_name(bin));
+            }
+
+        }
+
+        void fill_record(as_record* rec, Record* record) {
+
+            record->set_version(rec->gen);
+
+            as_record_iterator it;
+            as_record_iterator_init(&it, rec);
+
+            auto columns = record->mutable_columns();
+
+            while (as_record_iterator_has_next(&it)) {
+                const as_bin* bin = as_record_iterator_next(&it);
+                std::string columnKey(as_bin_get_name(bin));
+                as_bin_value* value = as_bin_get_value(bin);
+
+                if (value) {
+
+                    // if bin has null value, we do not return pair key/value
+
+                    as_val_t type = as_val_type(value);
+
+                    if (type == AS_BYTES) {
+                        as_bytes bytes = value->bytes;
+                        std::string columnValue(reinterpret_cast<char const *>(bytes.value),
+                                                bytes.size);
+                        (*columns)[columnKey] = columnValue;
+                    } else {
+                        char *strValue = as_val_tostring(value);
+                        if (strValue) {
+
+                            // if value can not be converted to string, then we ignore it
+
+                            std::string columnValue(strValue);
+                            (*columns)[columnKey] = columnValue;
+                        }
+                    }
+                }
+            }
+
+        }
 
     };
 
