@@ -171,6 +171,9 @@ namespace gkvs {
         void multiGetHead(const ::gkvs::BatchKeyOperation *request,
                           ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
 
+            //request->ops();
+
+
         }
 
         void get(const ::gkvs::KeyOperation *request, ::gkvs::RecordResult *response) override {
@@ -259,7 +262,7 @@ namespace gkvs {
 
         }
 
-        void removeAll(const ::gkvs::BatchKeyOperation *request, ::gkvs::Status *response) override {
+        void removeAll(::grpc::ServerReaderWriter<::gkvs::Status, ::gkvs::KeyOperation> *stream) override {
 
         }
 

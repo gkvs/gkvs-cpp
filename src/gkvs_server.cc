@@ -86,12 +86,12 @@ namespace gkvs {
         grpc::Status multiGetHead(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
                             ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
 
-            if (!request->has_ops()) {
+            if (request->ops().empty()) {
 
-                HeadResult result;
-                result.mutable_status()->set_code(Status_Code_SUCCESS_END_STREAM);
+                //HeadResult result;
+                //result.mutable_status()->set_code(Status_Code_SUCCESS_END_STREAM);
 
-                writer->WriteLast(result, grpc::WriteOptions());
+                //writer->WriteLast(result, grpc::WriteOptions());
 
                 return grpc::Status::OK;
             }
@@ -127,7 +127,7 @@ namespace gkvs {
         grpc::Status multiGet(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
                         ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
 
-            if (!request->has_ops()) {
+            if (request->ops().empty()) {
 
                 RecordResult result;
                 result.mutable_status()->set_code(Status_Code_SUCCESS_END_STREAM);
@@ -263,13 +263,15 @@ namespace gkvs {
             return grpc::Status::OK;
         }
 
-        grpc::Status removeAll(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
-                         ::gkvs::Status *response) override {
+        grpc::Status removeAll(::grpc::ServerContext *context,
+                               ::grpc::ServerReaderWriter<::gkvs::Status, ::gkvs::KeyOperation> *stream) override {
 
-            _driver->removeAll(request, response);
+            _driver->removeAll(stream);
 
             return grpc::Status::OK;
+
         }
+
 
     private:
         gkvs::Driver *_driver;

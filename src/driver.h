@@ -43,7 +43,7 @@ namespace gkvs {
         virtual void compareAndPut(const ::gkvs::PutOperation* request, ::gkvs::Status* response) = 0;
         virtual void putAll(::grpc::ServerReaderWriter< ::gkvs::Status, ::gkvs::PutOperation>* stream) = 0;
         virtual void remove(const ::gkvs::KeyOperation* request, ::gkvs::Status* response) = 0;
-        virtual void removeAll(const ::gkvs::BatchKeyOperation* request, ::gkvs::Status* response) = 0;
+        virtual void removeAll(::grpc::ServerReaderWriter<::gkvs::Status, ::gkvs::KeyOperation> *stream) = 0;
 
     };
 
