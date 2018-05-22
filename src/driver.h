@@ -34,16 +34,17 @@ namespace gkvs {
         Driver() = default;
         virtual ~Driver() = default;
         virtual void getHead(const ::gkvs::KeyOperation* request, ::gkvs::HeadResult* response) = 0;
-        virtual void multiGetHead(const ::gkvs::BatchKeyOperation* request, ::grpc::ServerWriter< ::gkvs::HeadResult>* writer) = 0;
+        virtual void multiGetHead(const ::gkvs::BatchKeyOperation *request, ::gkvs::BatchHeadResult *response) = 0;
+        virtual void getHeadAll(::grpc::ServerReaderWriter<::gkvs::HeadResult, ::gkvs::KeyOperation> *stream) = 0;
         virtual void get(const ::gkvs::KeyOperation* request, ::gkvs::RecordResult* response) = 0;
-        virtual void multiGet(const ::gkvs::BatchKeyOperation* request, ::grpc::ServerWriter< ::gkvs::RecordResult>* writer) = 0;
+        virtual void multiGet(const ::gkvs::BatchKeyOperation *request, ::gkvs::BatchRecordResult *response) = 0;
+        virtual void getAll(::grpc::ServerReaderWriter<::gkvs::RecordResult, ::gkvs::KeyOperation> *stream) = 0;
         virtual void scanHead(const ::gkvs::ScanOperation* request, ::grpc::ServerWriter< ::gkvs::HeadResult>* writer) = 0;
         virtual void scan(const ::gkvs::ScanOperation* request, ::grpc::ServerWriter< ::gkvs::RecordResult>* writer) = 0;
-        virtual void put(const ::gkvs::PutOperation* request, ::gkvs::Status* response) = 0;
-        virtual void compareAndPut(const ::gkvs::PutOperation* request, ::gkvs::Status* response) = 0;
-        virtual void putAll(::grpc::ServerReaderWriter< ::gkvs::Status, ::gkvs::PutOperation>* stream) = 0;
-        virtual void remove(const ::gkvs::KeyOperation* request, ::gkvs::Status* response) = 0;
-        virtual void removeAll(::grpc::ServerReaderWriter<::gkvs::Status, ::gkvs::KeyOperation> *stream) = 0;
+        virtual void put(const ::gkvs::PutOperation* request, bool useVersion, ::gkvs::StatusResult* response) = 0;
+        virtual void putAll(::grpc::ServerReaderWriter< ::gkvs::StatusResult, ::gkvs::PutOperation>* stream) = 0;
+        virtual void remove(const ::gkvs::KeyOperation* request, ::gkvs::StatusResult* response) = 0;
+        virtual void removeAll(::grpc::ServerReaderWriter<::gkvs::StatusResult, ::gkvs::KeyOperation> *stream) = 0;
 
     };
 
