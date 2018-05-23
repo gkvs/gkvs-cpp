@@ -30,14 +30,10 @@ namespace gkvs {
     public:
         Driver() = default;
         virtual ~Driver() = default;
-        virtual void getHead(const KeyOperation* request, HeadResult* response) = 0;
-        virtual void multiGetHead(const BatchKeyOperation *request, BatchHeadResult *response) = 0;
-        virtual void getHeadAll(::grpc::ServerReaderWriter<::gkvs::HeadResult, KeyOperation> *stream) = 0;
-        virtual void get(const KeyOperation* request, RecordResult* response) = 0;
-        virtual void multiGet(const BatchKeyOperation *request, BatchRecordResult *response) = 0;
-        virtual void getAll(::grpc::ServerReaderWriter<::gkvs::RecordResult, KeyOperation> *stream) = 0;
-        virtual void scanHead(const ScanOperation* request, ::grpc::ServerWriter< HeadResult>* writer) = 0;
-        virtual void scan(const ScanOperation* request, ::grpc::ServerWriter< RecordResult>* writer) = 0;
+        virtual void get(const KeyOperation* request, ValueResult* response) = 0;
+        virtual void multiGet(const BatchKeyOperation *request, BatchValueResult *response) = 0;
+        virtual void getAll(::grpc::ServerReaderWriter<::gkvs::ValueResult, KeyOperation> *stream) = 0;
+        virtual void scan(const ScanOperation* request, ::grpc::ServerWriter< ValueResult>* writer) = 0;
         virtual void put(const PutOperation* request, StatusResult* response) = 0;
         virtual void putAll(::grpc::ServerReaderWriter<StatusResult, PutOperation>* stream) = 0;
         virtual void remove(const KeyOperation* request, StatusResult* response) = 0;
@@ -45,7 +41,7 @@ namespace gkvs {
 
     };
 
-
+    // conf_str is the json config
     Driver* create_aerospike_driver(const std::string &conf_str, const std::string &lua_path);
 
 }

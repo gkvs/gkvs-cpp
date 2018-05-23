@@ -60,38 +60,9 @@ namespace gkvs {
             delete _driver;
         }
 
-        grpc::Status getHead(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request,
-                       ::gkvs::HeadResult *response) override {
-
-            _driver->getHead(request, response);
-
-            return grpc::Status::OK;
-
-        }
-
-        grpc::Status multiGetHead(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
-                                  ::gkvs::BatchHeadResult *response) override {
-
-
-            if (!request->operation().empty()) {
-
-                _driver->multiGetHead(request, response);
-
-            }
-
-            return grpc::Status::OK;
-        }
-
-        grpc::Status getHeadAll(::grpc::ServerContext *context,
-                                ::grpc::ServerReaderWriter<::gkvs::HeadResult, ::gkvs::KeyOperation> *stream) override {
-
-            _driver->getHeadAll(stream);
-
-            return grpc::Status::OK;
-        }
 
         grpc::Status get(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request,
-                   ::gkvs::RecordResult *response) override {
+                   ::gkvs::ValueResult *response) override {
 
             _driver->get(request, response);
 
@@ -99,7 +70,7 @@ namespace gkvs {
         }
 
         grpc::Status multiGet(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
-                              ::gkvs::BatchRecordResult *response) override {
+                              ::gkvs::BatchValueResult *response) override {
 
             if (!request->operation().empty()) {
 
@@ -110,7 +81,7 @@ namespace gkvs {
         }
 
         grpc::Status getAll(::grpc::ServerContext *context,
-                            ::grpc::ServerReaderWriter<::gkvs::RecordResult, ::gkvs::KeyOperation> *stream) override {
+                            ::grpc::ServerReaderWriter<::gkvs::ValueResult, ::gkvs::KeyOperation> *stream) override {
 
             _driver->getAll(stream);
 
@@ -118,17 +89,8 @@ namespace gkvs {
 
         }
 
-        grpc::Status scanHead(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
-                        ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
-
-
-            _driver->scanHead(request, writer);
-
-            return grpc::Status::OK;
-        }
-
         grpc::Status scan(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
-                    ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
+                    ::grpc::ServerWriter<::gkvs::ValueResult> *writer) override {
 
 
             _driver->scan(request, writer);

@@ -157,53 +157,24 @@ namespace gkvs {
 
         }
 
-        void getHead(const KeyOperation *request, HeadResult *response) override {
 
-            do_head(request, response);
-
-        }
-
-        void multiGetHead(const BatchKeyOperation *request, BatchHeadResult *response) override {
-
-            do_multi_head(request, response);
-
-        }
-
-
-        void getHeadAll(::grpc::ServerReaderWriter<HeadResult, KeyOperation> *stream) override {
-
-            KeyOperation request;
-            HeadResult response;
-
-            if (stream->Read(&request)) {
-
-                response.Clear();
-
-                do_head(&request, &response);
-
-                stream->Write(response);
-
-            }
-
-        }
-
-        void get(const KeyOperation *request, RecordResult *response) override {
+        void get(const KeyOperation *request, ValueResult *response) override {
 
             do_get(request, response);
 
         }
 
-        void multiGet(const BatchKeyOperation *request, BatchRecordResult *response) override {
+        void multiGet(const BatchKeyOperation *request, BatchValueResult *response) override {
 
             do_multi_get(request, response);
 
         }
 
 
-        void getAll(::grpc::ServerReaderWriter<::gkvs::RecordResult, ::gkvs::KeyOperation> *stream) override {
+        void getAll(::grpc::ServerReaderWriter<::gkvs::ValueResult, ::gkvs::KeyOperation> *stream) override {
 
             KeyOperation request;
-            RecordResult response;
+            ValueResult response;
 
             if (stream->Read(&request)) {
 
@@ -217,14 +188,7 @@ namespace gkvs {
 
         }
 
-        void scanHead(const ScanOperation *request, ::grpc::ServerWriter<HeadResult> *writer) override {
-
-
-            do_scan_head(request, writer);
-
-        }
-
-        void scan(const ScanOperation *request, ::grpc::ServerWriter<RecordResult> *writer) override {
+        void scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer) override {
 
             do_scan(request, writer);
 
@@ -293,10 +257,11 @@ namespace gkvs {
     protected:
 
         void init_read_policy(const Operation& op, as_policy_read* pol) {
+
             as_policy_read_init(pol);
 
-            if (op.timeoutmls() > 0) {
-                pol->base.total_timeout = static_cast<uint32_t>(op.timeoutmls());
+            if (op.timeout() > 0) {
+                pol->base.total_timeout = static_cast<uint32_t>(op.timeout());
             }
             pol->base.max_retries = _max_retries;
             pol->base.sleep_between_retries = _sleep_between_retries;
@@ -308,10 +273,11 @@ namespace gkvs {
 
 
         void init_write_policy(const Operation& op, as_policy_write* pol) {
+
             as_policy_write_init(pol);
 
-            if (op.timeoutmls() > 0) {
-                pol->base.total_timeout = static_cast<uint32_t>(op.timeoutmls());
+            if (op.timeout() > 0) {
+                pol->base.total_timeout = static_cast<uint32_t>(op.timeout());
             }
             pol->base.max_retries = _max_retries;
             pol->base.sleep_between_retries = _sleep_between_retries;
@@ -325,9 +291,10 @@ namespace gkvs {
 
         void init_remove_policy(const Operation& op, as_policy_remove* pol) {
 
-            int timeout = op.timeoutmls();
-            if (timeout > 0) {
-                pol->base.total_timeout = static_cast<uint32_t>(timeout);
+            as_policy_remove_init(pol);
+
+            if (op.timeout() > 0) {
+                pol->base.total_timeout = static_cast<uint32_t>(op.timeout());
             }
             pol->base.max_retries = _max_retries;
             pol->base.sleep_between_retries = _sleep_between_retries;
@@ -383,6 +350,12 @@ namespace gkvs {
             status->set_errormessage(errorMessage);
         }
 
+        void unsupported(const char* errorMessage, Status *status) {
+            status->set_code(Status_Code_ERROR_UNSUPPORTED);
+            status->set_errorcode(Status_Code_ERROR_UNSUPPORTED);
+            status->set_errormessage(errorMessage);
+        }
+
         void driver_error(const char* errorMessage, Status *status) {
             status->set_code(Status_Code_ERROR_DRIVER);
             status->set_errorcode(AEROSPIKE_ERR);
@@ -404,15 +377,29 @@ namespace gkvs {
         bool valid_key(const Key &key, StatusErr& statusErr) {
 
             if (key.tablename().empty()) {
-                statusErr.bad_request("empty tableName");
+                statusErr.bad_request("empty table name");
                 return false;
             }
 
-            if (key.recordRef_case() == Key::RecordRefCase::kRecordKey) {
-                if (key.recordkey().empty()) {
-                    statusErr.bad_request("empty recordKey");
+            switch(key.recordKey_case()) {
+
+                case Key::RecordKeyCase::kRaw:
+                    if (key.raw().empty()) {
+                        statusErr.bad_request("empty record key raw");
+                        return false;
+                    }
+                    break;
+
+                case Key::RecordKeyCase::kDigest:
+                    if (key.digest().empty()) {
+                        statusErr.bad_request("empty record key digest");
+                        return false;
+                    }
+                    break;
+
+                default:
+                    statusErr.bad_request("invalid record key type");
                     return false;
-                }
             }
 
             return true;
@@ -427,23 +414,25 @@ namespace gkvs {
                 return false;
             }
 
-            switch(requestKey.recordRef_case()) {
+            switch(requestKey.recordKey_case()) {
 
-                case Key::RecordRefCase::kRecordKey:
-                    if (!as_key_init_str(&key, _namespace.c_str(), tableName.c_str(), requestKey.recordkey().c_str())) {
-                        statusErr.driver_error("as_key_init_str fail");
+                case Key::RecordKeyCase::kRaw: {
+                    const uint8_t* value = (const uint8_t*) requestKey.raw().c_str();
+                    uint32_t len = static_cast<uint32_t>(requestKey.raw().length());
+                    if (!as_key_init_rawp(&key, _namespace.c_str(), tableName.c_str(), value, len, false)) {
+                        statusErr.driver_error("as_key_init_raw fail");
                         return false;
                     }
                     break;
+                }
 
-                case Key::RecordRefCase::kRecordHash: {
-                    //uint8_t digest[AS_DIGEST_VALUE_SIZE];
-                    if (requestKey.recordhash().length() != AS_DIGEST_VALUE_SIZE) {
-                        statusErr.bad_request("record_hash must be 20 bytes");
+                case Key::RecordKeyCase::kDigest: {
+                    if (requestKey.digest().length() < AS_DIGEST_VALUE_SIZE) {
+                        statusErr.bad_request("record digest must not be less than 20 bytes");
                         return false;
                     }
-                    const uint8_t *hash = (const uint8_t *) requestKey.recordhash().c_str();
-                    if (!as_key_init_digest(&key, _namespace.c_str(), tableName.c_str(), hash)) {
+                    const uint8_t *value = (const uint8_t *) requestKey.digest().c_str();
+                    if (!as_key_init_digest(&key, _namespace.c_str(), tableName.c_str(), value)) {
                         statusErr.driver_error("as_key_init_digest fail");
                         return false;
                     }
@@ -460,14 +449,15 @@ namespace gkvs {
         }
 
 
-        const char** allocate_bins(const Key& key) {
+        const char** allocate_bins(const Select& select) {
 
-            int size = key.columnkey_size();
+            size_t size = select.column_size();
 
             const char ** bins = new const char*[size+1];
 
-            for (int i = 0; i != size; ++i) {
-                bins[i] = key.columnkey(i).c_str();
+            size_t i = 0;
+            for (auto &col : select.column()) {
+                bins[i++] = col.c_str();
             }
 
             bins[size] = nullptr;
@@ -475,111 +465,170 @@ namespace gkvs {
             return bins;
         }
 
-        void head_result(as_record *rec, Head *head) {
+        const char** allocate_bins(std::set<std::string>& select) {
 
-            head->set_version(rec->gen);
+            size_t size = select.size();
 
-            //uint16_t num_bins = as_record_numbins(rec);
+            const char ** bins = new const char*[size+1];
 
-            as_record_iterator it;
-            as_record_iterator_init(&it, rec);
-
-            while (as_record_iterator_has_next(&it)) {
-                const as_bin* bin = as_record_iterator_next(&it);
-                head->add_columnkey(as_bin_get_name(bin));
+            size_t i = 0;
+            for (auto &col : select) {
+                bins[i++] = col.c_str();
             }
+
+            bins[size] = nullptr;
+
+            return bins;
 
         }
 
-        void record_result(as_record *rec, Record *record) {
+        void metadata_result(as_record *rec, ValueResult *result) {
 
-            record->set_version(rec->gen);
+            Metadata* meta = result->mutable_metadata();
 
-            as_record_iterator it;
-            as_record_iterator_init(&it, rec);
+            meta->set_version(rec->gen);
+            meta->set_ttl(rec->ttl);
 
-            auto columns = record->mutable_columns();
+        }
 
-            while (as_record_iterator_has_next(&it)) {
-                const as_bin* bin = as_record_iterator_next(&it);
-                std::string columnKey(as_bin_get_name(bin));
-                as_bin_value* value = as_bin_get_value(bin);
+        bool include_value(const OutputOptions &out) {
 
-                if (value) {
-
-                    // if bin has null value, we do not return pair key/value
-
-                    as_val_t type = as_val_type(value);
-
-                    if (type == AS_BYTES) {
-                        as_bytes bytes = value->bytes;
-                        std::string columnValue(reinterpret_cast<char const *>(bytes.value),
-                                                bytes.size);
-                        (*columns)[columnKey] = columnValue;
-                    } else {
-                        char *strValue = as_val_tostring(value);
-                        if (strValue) {
-
-                            // if value can not be converted to string, then we ignore it
-
-                            std::string columnValue(strValue);
-                            (*columns)[columnKey] = columnValue;
-                        }
-                    }
-                }
+            switch(out) {
+                case VALUE:
+                case VALUE_DIGEST:
+                case KEY_VALUE:
+                case KEY_VALUE_DIGEST:
+                    return true;
+                default:
+                    break;
             }
+
+            return false;
+        }
+
+        bool include_value_digest(const OutputOptions &out) {
+
+            switch(out) {
+                case VALUE_DIGEST:
+                case KEY_VALUE_DIGEST:
+                    return true;
+                default:
+                    break;
+            }
+
+            return false;
+        }
+
+        bool include_key(const OutputOptions &out) {
+
+            switch(out) {
+                case KEY:
+                case KEY_VALUE:
+                case KEY_VALUE_DIGEST:
+                    return true;
+                default:
+                    break;
+            }
+
+            return false;
 
         }
 
 
-        void key_result(as_key* key, Key* keyResult) {
+        void key_result(const Key& key , ValueResult *result, const OutputOptions &out) {
 
-            keyResult->set_tablename(key->set);
-
-            bool hasValue = false;
-
-            if (key->valuep) {
-
-                char *strValue = as_val_tostring(key->valuep);
-
-                if (strValue) {
-                    keyResult->set_recordkey(strValue);
-                    hasValue = true;
-                }
-
-            }
-
-            if (!hasValue) {
-
-                as_digest *digest = as_key_digest(key);
-                if (digest) {
-                    const as_digest_value &b = key->digest.value;
-                    std::string hash = std::string((const char*)b, AS_DIGEST_VALUE_SIZE);
-                    keyResult->set_recordhash(hash);
-                }
-
+            if (include_key(out)) {
+                result->mutable_key()->CopyFrom(key);
             }
 
         }
 
         /**
-         * GET
+         * TODO: implement DIGEST calc
          */
 
+        void value_result(as_record *rec, ValueResult *result, const OutputOptions &out) {
 
-        struct multiGetHead_context {
+            bool includeValue = include_value(out);
 
-            AerospikeDriver* instance;
-            BatchHeadResult *response;
-            std::unordered_map<const as_key*, const KeyOperation*, as_key_hash, as_key_equal> key_map;
+            as_record_iterator it;
+            as_record_iterator_init(&it, rec);
 
-        };
+            while (as_record_iterator_has_next(&it)) {
 
-        void do_multi_head(const BatchKeyOperation *request, BatchHeadResult *response);
+                const as_bin* bin = as_record_iterator_next(&it);
 
-        bool multiGetHead_callback(const as_batch_read* results, uint32_t n, multiGetHead_context* context);
+                Value* recordValue = result->add_value();
 
-        static bool static_multiGetHead_callback(const as_batch_read* results, uint32_t n, void* udata);
+                std::string column(as_bin_get_name(bin));
+                recordValue->set_column(column);
+
+                as_bin_value* value = as_bin_get_value(bin);
+
+                if (value && includeValue) {
+
+                    as_val_t type = as_val_type(value);
+
+                    if (type == AS_BYTES) {
+                        as_bytes bytes = value->bytes;
+                        recordValue->set_raw(bytes.value, bytes.size);
+                    } else {
+                        char *pstr = as_val_tostring(value);
+                        // if value can not be converted to string, then we ignore it
+                        if (pstr) {
+                            recordValue->set_raw(pstr);
+                            cf_free(pstr);
+                        }
+                    }
+                }
+
+
+            }
+
+        }
+
+        void key_result(as_key* key, ValueResult *result, const OutputOptions &out) {
+
+            if (!include_key(out)) {
+                return;
+            }
+
+            Key* res = result->mutable_key();
+            res->set_tablename(key->set);
+
+            bool setup = false;
+
+            if (key->valuep) {
+
+                as_key_value* value = key->valuep;
+                as_val_t type = as_val_type(value);
+
+                if (type == AS_BYTES) {
+                    as_bytes bytes = value->bytes;
+                    res->set_raw(bytes.value, bytes.size);
+                    setup = true;
+                } else {
+                    char *pstr = as_val_tostring(value);
+                    // if value can not be converted to string, then we ignore it
+                    if (pstr) {
+                        res->set_raw(pstr);
+                        setup = true;
+                        cf_free(pstr);
+                    }
+                }
+
+            }
+
+            if (!setup) {
+
+                as_digest *digest = as_key_digest(key);
+                if (digest) {
+                    res->set_digest(key->digest.value, AS_DIGEST_VALUE_SIZE);
+                }
+
+            }
+
+        }
 
 
         /**
@@ -589,12 +638,12 @@ namespace gkvs {
         struct multiGet_context {
 
             AerospikeDriver* instance;
-            BatchRecordResult *response;
+            BatchValueResult *response;
             std::unordered_map<const as_key*, const KeyOperation*, as_key_hash, as_key_equal> key_map;
 
         };
 
-        void do_multi_get(const BatchKeyOperation *request, BatchRecordResult *response);
+        void do_multi_get(const BatchKeyOperation *request, BatchValueResult *response);
 
         bool multiGet_callback(const as_batch_read* results, uint32_t n, multiGet_context* context);
 
@@ -605,31 +654,16 @@ namespace gkvs {
          * SCAN
          */
 
-        struct scanHead_context {
-
-            AerospikeDriver* instance;
-            grpc::ServerWriter<HeadResult> *writer;
-            bool includeKeyInResult;
-            mutable std::mutex scan_mutex;
-
-        };
-
-        void do_scan_head(const ScanOperation *request, ::grpc::ServerWriter<HeadResult> *writer);
-
-        static bool static_scanHead_callback(const as_val* val, void* udata);
-
-        bool scanHead_callback(const as_val* val, scanHead_context* context);
-
         struct scan_context {
 
             AerospikeDriver* instance;
-            grpc::ServerWriter<::gkvs::RecordResult> *writer;
-            bool includeKeyInResult;
+            grpc::ServerWriter<::gkvs::ValueResult> *writer;
+            const ScanOperation* operation;
             mutable std::mutex scan_mutex;
 
         };
 
-        void do_scan(const ScanOperation *request, ::grpc::ServerWriter<RecordResult> *writer);
+        void do_scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer);
 
         bool static static_scan_callback(const as_val* val, void* udata);
 
@@ -640,9 +674,7 @@ namespace gkvs {
          */
 
 
-        void do_head(const KeyOperation *request, HeadResult *response);
-
-        void do_get(const KeyOperation *request, RecordResult *response);
+        void do_get(const KeyOperation *request, ValueResult *response);
 
         void do_put(const PutOperation *request, StatusResult *response);
 
@@ -824,131 +856,7 @@ static gkvs::Status_Code parse_aerospike_status(as_status status) {
 
 
 
-
-
-void gkvs::AerospikeDriver::do_multi_head(const ::gkvs::BatchKeyOperation *request, ::gkvs::BatchHeadResult *response) {
-
-    multiGetHead_context context = { this, response };
-
-    uint32_t size = static_cast<uint32_t>(request->operation().size());
-
-    as_batch batch;
-    as_batch_inita(&batch, size);
-
-    int max_timeout = 0;
-    uint32_t actual_size = 0;
-
-    for (uint32_t  i = 0; i < size; ++i) {
-
-        const KeyOperation &operation = request->operation(i);
-
-        if (!operation.has_key()) {
-            HeadResult* result = response->add_result();
-            result->set_sequencenum(operation.sequencenum());
-            bad_request("empty key", result->mutable_status());
-            continue;
-        }
-
-        if (!operation.has_op()) {
-            HeadResult* result = response->add_result();
-            result->set_sequencenum(operation.sequencenum());
-            bad_request("empty op", result->mutable_status());
-            continue;
-        }
-
-        StatusErr statusErr;
-        if (!valid_key(operation.key(), statusErr)) {
-            HeadResult* result = response->add_result();
-            result->set_sequencenum(operation.sequencenum());
-            statusErr.to_status(result->mutable_status());
-            continue;
-        }
-
-        if (operation.op().timeoutmls() > max_timeout) {
-            max_timeout = operation.op().timeoutmls();
-        }
-
-        as_key* key = as_batch_keyat(&batch, i);
-        if (!init_key(operation.key(), *key, statusErr)) {
-            HeadResult* result = response->add_result();
-            result->set_sequencenum(operation.sequencenum());
-            statusErr.to_status(result->mutable_status());
-            continue;
-        }
-
-        context.key_map[key] = &operation;
-        actual_size++;
-    }
-
-    if (actual_size < size) {
-        batch.keys.size = actual_size;
-    }
-
-    as_policy_batch pol;
-    init_batch_policy(max_timeout, actual_size, &pol);
-
-    as_error err;
-    as_status status = aerospike_batch_exists(&_as, &err, &pol, &batch, static_multiGetHead_callback, &context);
-
-    as_batch_destroy(&batch);
-
-}
-
-bool gkvs::AerospikeDriver::static_multiGetHead_callback(const as_batch_read* results, uint32_t n, void* udata) {
-
-    multiGetHead_context* context = (multiGetHead_context*) udata;
-    return context->instance->multiGetHead_callback(results, n, context);
-}
-
-bool gkvs::AerospikeDriver::multiGetHead_callback(const as_batch_read* results, uint32_t n, multiGetHead_context* context) {
-
-    BatchHeadResult *response = context->response;
-
-    for (uint32_t i = 0; i < n; ++i) {
-
-        HeadResult *result = response->add_result();
-
-        const as_key* key = results[i].key;
-        if (key) {
-
-            const KeyOperation* operation = context->key_map[key];
-            if (operation) {
-                result->set_sequencenum(operation->sequencenum());
-
-                if (operation->includekeyinresult()) {
-                    result->mutable_key()->CopyFrom(operation->key());
-                }
-            }
-
-        }
-
-        as_status status = results[i].result;
-
-        if (status == AEROSPIKE_OK) {
-
-            const as_record *rec = &results[i].record;
-            head_result(const_cast<as_record *>(rec), result->mutable_head());
-            success(result->mutable_status());
-
-        }
-        else if (status == AEROSPIKE_ERR_RECORD_NOT_FOUND) {
-
-            // return no head, means no record was found, this is not an error, it is like a map interface for records
-            // not like database interface
-
-            success(result->mutable_status());
-        }
-        else {
-            error(results[i].result, result->mutable_status());
-        }
-
-    }
-
-    return true;
-}
-
-
-void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *request, ::gkvs::BatchRecordResult *response) {
+void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *request, ::gkvs::BatchValueResult *response) {
 
     multiGet_context context = {this, response};
 
@@ -956,6 +864,10 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
 
     as_batch batch;
     as_batch_inita(&batch, size);
+
+    bool includeValue = false;
+    bool useSelect = true;
+    std::set<std::string> select;
 
     int max_timeout = 0;
     uint32_t actual_size = 0;
@@ -965,14 +877,14 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
         const KeyOperation &operation = request->operation(i);
 
         if (!operation.has_key()) {
-            RecordResult *result = response->add_result();
+            ValueResult *result = response->add_result();
             result->set_sequencenum(operation.sequencenum());
             bad_request("empty key", result->mutable_status());
             continue;
         }
 
         if (!operation.has_op()) {
-            RecordResult *result = response->add_result();
+            ValueResult *result = response->add_result();
             result->set_sequencenum(operation.sequencenum());
             bad_request("empty op", result->mutable_status());
             continue;
@@ -980,24 +892,37 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
 
         StatusErr statusErr;
         if (!valid_key(operation.key(), statusErr)) {
-            RecordResult *result = response->add_result();
+            ValueResult *result = response->add_result();
             result->set_sequencenum(operation.sequencenum());
             statusErr.to_status(result->mutable_status());
             continue;
         }
 
-        if (operation.op().timeoutmls() > max_timeout) {
-            max_timeout = operation.op().timeoutmls();
+        if (operation.op().timeout() > max_timeout) {
+            max_timeout = operation.op().timeout();
         }
 
         as_key *key = as_batch_keyat(&batch, i);
         if (!init_key(operation.key(), *key, statusErr)) {
-            RecordResult *result = response->add_result();
+            ValueResult *result = response->add_result();
             result->set_sequencenum(operation.sequencenum());
             statusErr.to_status(result->mutable_status());
             continue;
         }
 
+        if (operation.has_select()) {
+            if (useSelect) {
+                for (auto &col : operation.select().column()) {
+                    select.insert(col);
+                }
+            }
+        }
+        else {
+            // if no select specified, return the whole record
+            useSelect = false;
+        }
+
+        includeValue |= include_value(operation.output());
         context.key_map[key] = &operation;
         actual_size++;
     }
@@ -1010,7 +935,21 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
     init_batch_policy(max_timeout, actual_size, &pol);
 
     as_error err;
-    aerospike_batch_exists(&_as, &err, &pol, &batch, static_multiGet_callback, &context);
+    if (includeValue) {
+
+        if (useSelect) {
+            const char** bins = allocate_bins(select);
+            uint32_t n_bins = static_cast<uint32_t>(select.size());
+            aerospike_batch_get_bins(&_as, &err, &pol, &batch, bins, n_bins, static_multiGet_callback, &context);
+            delete[] bins;
+        }
+        else {
+            aerospike_batch_get(&_as, &err, &pol, &batch, static_multiGet_callback, &context);
+        }
+    }
+    else {
+        aerospike_batch_exists(&_as, &err, &pol, &batch, static_multiGet_callback, &context);
+    }
 
     as_batch_destroy(&batch);
 
@@ -1027,24 +966,27 @@ bool gkvs::AerospikeDriver::static_multiGet_callback(const as_batch_read* result
 
 bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint32_t n, multiGet_context* context) {
 
-    BatchRecordResult *response = context->response;
+    BatchValueResult *response = context->response;
 
     for (uint32_t i = 0; i < n; ++i) {
 
-        RecordResult *result = response->add_result();
+        ValueResult *result = response->add_result();
 
+        const KeyOperation* operation = nullptr;
         const as_key* key = results[i].key;
         if (key) {
+            operation = context->key_map[key];
+        }
 
-            const KeyOperation* operation = context->key_map[key];
-            if (operation) {
-                result->set_sequencenum(operation->sequencenum());
-
-                if (operation->includekeyinresult()) {
-                    result->mutable_key()->CopyFrom(operation->key());
-                }
-            }
-
+        if (operation) {
+            // for client identification purpose
+            result->set_sequencenum(operation->sequencenum());
+            key_result(operation->key(), result, operation->output());
+        }
+        else {
+            char* pstr = as_val_tostring(key->valuep);
+            LOG(ERROR) << "operation not found for key: " << pstr << std::endl;
+            cf_free(pstr);
         }
 
         as_status status = results[i].result;
@@ -1052,14 +994,21 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
         if (status == AEROSPIKE_OK) {
 
             const as_record *rec = &results[i].record;
-            record_result(const_cast<as_record *>(rec), result->mutable_record());
+
+            metadata_result(const_cast<as_record *>(rec), result);
+            if (operation) {
+                value_result(const_cast<as_record *>(rec), result, operation->output());
+            }
+            else {
+                value_result(const_cast<as_record *>(rec), result, OutputOptions::VALUE);
+            }
+
             success(result->mutable_status());
 
         }
         else if (status == AEROSPIKE_ERR_RECORD_NOT_FOUND) {
 
-            // return no head, means no record was found, this is not an error, it is like a map interface for records
-            // not like database interface
+            // return no metadata, that means record was not found
 
             success(result->mutable_status());
         }
@@ -1102,13 +1051,13 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
  */
 
 
-void gkvs::AerospikeDriver::do_scan_head(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::HeadResult> *writer) {
+void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::ValueResult> *writer) {
 
     const std::string& tableName = request->tablename();
 
     if (tableName.empty()) {
 
-        HeadResult result;
+        ValueResult result;
         bad_request("empty table name", result.mutable_status());
         writer->WriteLast(result, grpc::WriteOptions());
         return;
@@ -1120,75 +1069,26 @@ void gkvs::AerospikeDriver::do_scan_head(const ::gkvs::ScanOperation *request, :
     as_scan scan;
     as_scan_init(&scan, _namespace.c_str(), tableName.c_str());
 
-    // only heads
-    as_scan_set_nobins(&scan, true);
+    if (!include_value(request->output())) {
+        as_scan_set_nobins(&scan, true);
+    }
 
-    as_policy_scan pol;
-    init_scan_policy(request->op().timeoutmls(), &pol);
+    scan.priority = AS_SCAN_PRIORITY_LOW;
 
-    scanHead_context context { this, writer, request->includekeyinresult() };
+    if (request->has_select()) {
+        uint16_t len = static_cast<uint16_t>(request->select().column().size());
+        as_scan_select_init(&scan, len);
 
-    as_status status = aerospike_scan_foreach(&_as, &err, &pol, &scan, static_scanHead_callback, &context);
-
-    as_scan_destroy(&scan);
-
-
-}
-
-bool gkvs::AerospikeDriver::static_scanHead_callback(const as_val* val, void* udata) {
-
-    scanHead_context* context = (scanHead_context*) udata;
-    return context->instance->scanHead_callback(val, context);
-
-}
-
-bool gkvs::AerospikeDriver::scanHead_callback(const as_val* val, scanHead_context* context) {
-
-    grpc::ServerWriter<::gkvs::HeadResult> *writer = context->writer;
-
-    HeadResult response;
-
-    as_record* rec = as_record_fromval(val);
-    if (rec) {
-
-        head_result(rec, response.mutable_head());
-
-        if (context->includeKeyInResult) {
-
-            key_result(&rec->key, response.mutable_key());
-
-
+        for (auto &col : request->select().column()) {
+            as_scan_select(&scan, col.c_str());
         }
 
-        std::lock_guard< std::mutex > guard( context->scan_mutex );
-        writer->Write(response, grpc::WriteOptions());
     }
-
-    return true;
-}
-
-void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::RecordResult> *writer) {
-
-    const std::string& tableName = request->tablename();
-
-    if (tableName.empty()) {
-
-        RecordResult result;
-        bad_request("empty table name", result.mutable_status());
-        writer->WriteLast(result, grpc::WriteOptions());
-        return;
-    }
-
-
-    as_error err;
-
-    as_scan scan;
-    as_scan_init(&scan, _namespace.c_str(), tableName.c_str());
 
     as_policy_scan pol;
-    init_scan_policy(request->op().timeoutmls(), &pol);
+    init_scan_policy(request->op().timeout(), &pol);
 
-    scan_context context { this, writer, request->includekeyinresult() };
+    scan_context context { this, writer, request };
 
     aerospike_scan_foreach(&_as, &err, &pol, &scan, static_scan_callback, &context);
 
@@ -1205,31 +1105,31 @@ bool gkvs::AerospikeDriver::static_scan_callback(const as_val* val, void* udata)
 
 bool gkvs::AerospikeDriver::scan_callback(const as_val* val, scan_context* context) {
 
-    grpc::ServerWriter<::gkvs::RecordResult> *writer = context->writer;
+    grpc::ServerWriter<::gkvs::ValueResult> *writer = context->writer;
+    const ScanOperation* operation = context->operation;
 
-    RecordResult response;
+    ValueResult result;
 
     as_record* rec = as_record_fromval(val);
     if (rec) {
 
-        record_result(rec, response.mutable_record());
+        // no sequence num
+        metadata_result(rec, &result);
+        key_result(&rec->key, &result, operation->output());
+        value_result(rec, &result, operation->output());
 
-        if (context->includeKeyInResult) {
-
-            key_result(&rec->key, response.mutable_key());
-
-        }
 
         std::lock_guard< std::mutex > guard( context->scan_mutex );
-        writer->Write(response, grpc::WriteOptions());
+        writer->Write(result, grpc::WriteOptions());
     }
 
     return true;
 }
 
 
-void gkvs::AerospikeDriver::do_head(const ::gkvs::KeyOperation *request, ::gkvs::HeadResult *response) {
+void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::ValueResult *response) {
 
+    // for client identification purpose
     response->set_sequencenum(request->sequencenum());
 
     if (!request->has_key()) {
@@ -1237,68 +1137,8 @@ void gkvs::AerospikeDriver::do_head(const ::gkvs::KeyOperation *request, ::gkvs:
         return;
     }
 
-    if (!request->has_op()) {
-        bad_request("no op", response->mutable_status());
-        return;
-    }
-
-    StatusErr statusErr;
-    if (!valid_key(request->key(), statusErr)) {
-        statusErr.to_status(response->mutable_status());
-        return;
-    }
-
-    as_key key;
-    if (!init_key(request->key(), key, statusErr)) {
-        statusErr.to_status(response->mutable_status());
-        return;
-    }
-
-    as_error err;
-    as_record* rec = nullptr;
-
-    as_policy_read pol;
-    init_read_policy(request->op(), &pol);
-
-    as_status status = aerospike_key_exists(&_as, &err, &pol, &key, &rec);
-
-    if (status == AEROSPIKE_OK) {
-
-        if (rec) {
-            head_result(rec, response->mutable_head());
-
-            if (request->includekeyinresult()) {
-                key_result(&rec->key, response->mutable_key());
-            }
-
-            as_record_destroy(rec);
-        }
-
-        success(response->mutable_status());
-
-    }
-    else if (status == AEROSPIKE_ERR_RECORD_NOT_FOUND) {
-
-        // return no head, means no record was found, this is not an error, it is like a map interface for records
-        // not like database interface
-
-        success(response->mutable_status());
-    }
-    else {
-        error(err, response->mutable_status());
-    }
-
-}
-
-
-void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::RecordResult *response) {
-
-    response->set_sequencenum(request->sequencenum());
-
-    if (!request->has_key()) {
-        bad_request("no key", response->mutable_status());
-        return;
-    }
+    // for client identification purpose
+    key_result(request->key(), response, request->output());
 
     if (!request->has_op()) {
         bad_request("no op", response->mutable_status());
@@ -1325,27 +1165,28 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::
     as_error err;
     as_status status;
 
-    if (request->key().columnkey_size() == 0) {
-        status = aerospike_key_get(&_as, &err, &pol, &key, &rec);
+    if (include_value(request->output())) {
+        if (request->has_select()) {
+            const char** bins = allocate_bins(request->select());
+            status = aerospike_key_select(&_as, &err, &pol, &key, bins, &rec);
+            delete [] bins;
+        }
+        else {
+            status = aerospike_key_get(&_as, &err, &pol, &key, &rec);
+        }
     }
     else {
-        const char** bins = allocate_bins(request->key());
-        status = aerospike_key_select(&_as, &err, &pol, &key, bins, &rec);
-        delete [] bins;
+        status = aerospike_key_exists(&_as, &err, &pol, &key, &rec);
     }
-
 
     if (status == AEROSPIKE_OK) {
 
         if (rec) {
-            record_result(rec, response->mutable_record());
 
-            if (request->includekeyinresult()) {
-                key_result(&rec->key, response->mutable_key());
-            }
+            metadata_result(rec, response);
+            value_result(rec, response, request->output());
 
             as_record_destroy(rec);
-
         }
 
         success(response->mutable_status());
@@ -1374,11 +1215,6 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
         return;
     }
 
-    if (!request->has_record()) {
-        bad_request("no record", response->mutable_status());
-        return;
-    }
-
     if (!request->has_op()) {
         bad_request("no op", response->mutable_status());
         return;
@@ -1397,39 +1233,48 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
         return;
     }
 
-    const Record& record = request->record();
-
-    auto size = static_cast<uint16_t>(record.columns().size());
+    auto size = static_cast<uint16_t>(request->value().size());
 
     as_record* rec = as_record_new(size);
 
-    for (const auto &i : record.columns()) {
+    for (const Value &val : request->value()) {
+
+        if (val.value_case() != Value::ValueCase::kRaw) {
+            bad_request("value must be raw", response->mutable_status());
+            return;
+        }
+
+        const uint8_t* raw = (const uint8_t*) val.raw().c_str();
+        uint32_t len = static_cast<uint32_t>(val.raw().size());
+
         // save all bins as raw bytes
-        as_record_set_raw(rec, i.first.c_str(), (uint8_t*) i.second.c_str(),
-                          static_cast<uint32_t>(i.second.size()));
+        as_record_set_raw(rec, val.column().c_str(), raw, len);
     }
 
     as_policy_write pol;
     init_write_policy(request->op(), &pol);
 
-    int ttl = request->ttlsec();
+    int ttl = request->ttl();
     if (ttl > 0) {
         rec->ttl = static_cast<uint32_t>(ttl);
     }
 
     // save the key if sent
-    if (request->key().recordRef_case() == Key::RecordRefCase::kRecordKey) {
+    if (request->key().recordKey_case() == Key::RecordKeyCase::kRaw) {
         pol.key = AS_POLICY_KEY_SEND;
     }
 
     // set version for CompareAndPut
     if (request->compareandput()) {
+        pol.gen = AS_POLICY_GEN_EQ;
+        rec->gen = static_cast<uint16_t>(request->version());
+    }
+    else {
         pol.gen = AS_POLICY_GEN_IGNORE;
-        rec->gen = static_cast<uint16_t>(record.version());
     }
 
     as_error err;
-    as_status status= aerospike_key_put(&_as, &err, &pol, &key, rec);
+    as_status status = aerospike_key_put(&_as, &err, &pol, &key, rec);
 
     if (status == AEROSPIKE_OK) {
 
@@ -1459,6 +1304,11 @@ void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkv
 
     if (!request->has_op()) {
         bad_request("no op", response->mutable_status());
+        return;
+    }
+
+    if (request->has_select()) {
+        unsupported("selected columns can not be deleted", response->mutable_status());
         return;
     }
 
