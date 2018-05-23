@@ -84,7 +84,9 @@ namespace gkvs {
 
     public:
 
-        explicit AerospikeDriver(const json &conf, const std::string &lua_dir) : Driver() {
+        explicit AerospikeDriver(const std::string &conf_str, const std::string &lua_dir) : Driver() {
+
+            json conf = nlohmann::json::parse(conf_str.begin(), conf_str.end());
 
             as_log_set_callback(glog_callback);
 
@@ -155,20 +157,20 @@ namespace gkvs {
 
         }
 
-        void getHead(const ::gkvs::KeyOperation *request, ::gkvs::HeadResult *response) override {
+        void getHead(const KeyOperation *request, HeadResult *response) override {
 
             do_head(request, response);
 
         }
 
-        void multiGetHead(const ::gkvs::BatchKeyOperation *request, ::gkvs::BatchHeadResult *response) override {
+        void multiGetHead(const BatchKeyOperation *request, BatchHeadResult *response) override {
 
             do_multi_head(request, response);
 
         }
 
 
-        void getHeadAll(::grpc::ServerReaderWriter<::gkvs::HeadResult, ::gkvs::KeyOperation> *stream) override {
+        void getHeadAll(::grpc::ServerReaderWriter<HeadResult, KeyOperation> *stream) override {
 
             KeyOperation request;
             HeadResult response;
@@ -185,13 +187,13 @@ namespace gkvs {
 
         }
 
-        void get(const ::gkvs::KeyOperation *request, ::gkvs::RecordResult *response) override {
+        void get(const KeyOperation *request, RecordResult *response) override {
 
             do_get(request, response);
 
         }
 
-        void multiGet(const ::gkvs::BatchKeyOperation *request, ::gkvs::BatchRecordResult *response) override {
+        void multiGet(const BatchKeyOperation *request, BatchRecordResult *response) override {
 
             do_multi_get(request, response);
 
@@ -215,26 +217,26 @@ namespace gkvs {
 
         }
 
-        void scanHead(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::HeadResult> *writer) override {
+        void scanHead(const ScanOperation *request, ::grpc::ServerWriter<HeadResult> *writer) override {
 
 
             do_scan_head(request, writer);
 
         }
 
-        void scan(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::RecordResult> *writer) override {
+        void scan(const ScanOperation *request, ::grpc::ServerWriter<RecordResult> *writer) override {
 
             do_scan(request, writer);
 
         }
 
-        void put(const ::gkvs::PutOperation *request, bool useVersion, ::gkvs::StatusResult *response) override {
+        void put(const PutOperation *request, StatusResult *response) override {
 
-            do_put(request, useVersion, response);
+            do_put(request, response);
 
         }
 
-        void putAll(::grpc::ServerReaderWriter<::gkvs::StatusResult, ::gkvs::PutOperation> *stream) override {
+        void putAll(::grpc::ServerReaderWriter<StatusResult, PutOperation> *stream) override {
 
             PutOperation request;
             StatusResult response;
@@ -243,7 +245,7 @@ namespace gkvs {
 
                 response.Clear();
 
-                do_put(&request, false, &response);
+                do_put(&request, &response);
 
                 stream->Write(response);
 
@@ -251,13 +253,13 @@ namespace gkvs {
 
         }
 
-        void remove(const ::gkvs::KeyOperation *request, ::gkvs::StatusResult *response) override {
+        void remove(const KeyOperation *request, StatusResult *response) override {
 
             do_remove(request, response);
 
         }
 
-        void removeAll(::grpc::ServerReaderWriter<::gkvs::StatusResult, ::gkvs::KeyOperation> *stream) override {
+        void removeAll(::grpc::ServerReaderWriter<StatusResult, KeyOperation> *stream) override {
 
             KeyOperation request;
             StatusResult response;
@@ -290,7 +292,7 @@ namespace gkvs {
 
     protected:
 
-        void init_read_policy(const ::gkvs::Operation& op, as_policy_read* pol) {
+        void init_read_policy(const Operation& op, as_policy_read* pol) {
             as_policy_read_init(pol);
 
             if (op.timeoutmls() > 0) {
@@ -305,7 +307,7 @@ namespace gkvs {
         }
 
 
-        void init_write_policy(const ::gkvs::Operation& op, as_policy_write* pol) {
+        void init_write_policy(const Operation& op, as_policy_write* pol) {
             as_policy_write_init(pol);
 
             if (op.timeoutmls() > 0) {
@@ -321,7 +323,7 @@ namespace gkvs {
             pol->commit_level = _commit_level;
         }
 
-        void init_remove_policy(const ::gkvs::Operation& op, as_policy_remove* pol) {
+        void init_remove_policy(const Operation& op, as_policy_remove* pol) {
 
             int timeout = op.timeoutmls();
             if (timeout > 0) {
@@ -573,7 +575,7 @@ namespace gkvs {
 
         };
 
-        void do_multi_head(const ::gkvs::BatchKeyOperation *request, ::gkvs::BatchHeadResult *response);
+        void do_multi_head(const BatchKeyOperation *request, BatchHeadResult *response);
 
         bool multiGetHead_callback(const as_batch_read* results, uint32_t n, multiGetHead_context* context);
 
@@ -592,7 +594,7 @@ namespace gkvs {
 
         };
 
-        void do_multi_get(const ::gkvs::BatchKeyOperation *request, ::gkvs::BatchRecordResult *response);
+        void do_multi_get(const BatchKeyOperation *request, BatchRecordResult *response);
 
         bool multiGet_callback(const as_batch_read* results, uint32_t n, multiGet_context* context);
 
@@ -606,13 +608,13 @@ namespace gkvs {
         struct scanHead_context {
 
             AerospikeDriver* instance;
-            grpc::ServerWriter<::gkvs::HeadResult> *writer;
+            grpc::ServerWriter<HeadResult> *writer;
             bool includeKeyInResult;
             mutable std::mutex scan_mutex;
 
         };
 
-        void do_scan_head(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::HeadResult> *writer);
+        void do_scan_head(const ScanOperation *request, ::grpc::ServerWriter<HeadResult> *writer);
 
         static bool static_scanHead_callback(const as_val* val, void* udata);
 
@@ -627,7 +629,7 @@ namespace gkvs {
 
         };
 
-        void do_scan(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::RecordResult> *writer);
+        void do_scan(const ScanOperation *request, ::grpc::ServerWriter<RecordResult> *writer);
 
         bool static static_scan_callback(const as_val* val, void* udata);
 
@@ -638,19 +640,19 @@ namespace gkvs {
          */
 
 
-        void do_head(const ::gkvs::KeyOperation *request, ::gkvs::HeadResult *response);
+        void do_head(const KeyOperation *request, HeadResult *response);
 
-        void do_get(const ::gkvs::KeyOperation *request, ::gkvs::RecordResult *response);
+        void do_get(const KeyOperation *request, RecordResult *response);
 
-        void do_put(const ::gkvs::PutOperation *request, bool compareAndPut, ::gkvs::StatusResult *response);
+        void do_put(const PutOperation *request, StatusResult *response);
 
-        void do_remove(const ::gkvs::KeyOperation *request, ::gkvs::StatusResult *response);
+        void do_remove(const KeyOperation *request, StatusResult *response);
 
 
     };
 
-    Driver* create_aerospike_driver(const json &conf, const std::string &lua_path) {
-        return new AerospikeDriver(conf, lua_path);
+    Driver* create_aerospike_driver(const std::string &conf_str, const std::string &lua_path) {
+        return new AerospikeDriver(conf_str, lua_path);
     }
 
 
@@ -1363,7 +1365,7 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::
 
 }
 
-void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, bool compareAndPut, ::gkvs::StatusResult *response) {
+void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::StatusResult *response) {
 
     response->set_sequencenum(request->sequencenum());
 
@@ -1421,7 +1423,7 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, bool com
     }
 
     // set version for CompareAndPut
-    if (compareAndPut) {
+    if (request->compareandput()) {
         pol.gen = AS_POLICY_GEN_IGNORE;
         rec->gen = static_cast<uint16_t>(record.version());
     }
@@ -1434,7 +1436,7 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, bool com
         success(response->mutable_status());
 
     }
-    else if (status == AEROSPIKE_ERR_RECORD_GENERATION && compareAndPut) {
+    else if (status == AEROSPIKE_ERR_RECORD_GENERATION && request->compareandput()) {
 
         response->mutable_status()->set_code(Status_Code_SUCCESS_NOT_UPDATED);
 

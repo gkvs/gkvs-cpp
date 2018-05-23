@@ -139,18 +139,11 @@ namespace gkvs {
         grpc::Status
         put(::grpc::ServerContext *context, const ::gkvs::PutOperation *request, ::gkvs::StatusResult *response) override {
 
-            _driver->put(request, false, response);
+            _driver->put(request, response);
 
             return grpc::Status::OK;
         }
 
-        grpc::Status compareAndPut(::grpc::ServerContext *context, const ::gkvs::PutOperation *request,
-                             ::gkvs::StatusResult *response) override {
-
-            _driver->put(request, true, response);
-
-            return grpc::Status::OK;
-        }
 
         grpc::Status putAll(::grpc::ServerContext *context,
                       ::grpc::ServerReaderWriter<::gkvs::StatusResult, ::gkvs::PutOperation> *stream) override {
@@ -197,7 +190,7 @@ DEFINE_string(lua_dir, "", "User lua scripts directory for Aerospike");
 void RunServer(const std::string& db_path) {
 
 
-    json aerospike_conf = R"({
+    std::string aerospike_conf = R"({
 
     "namespace": "test",
 
@@ -208,7 +201,7 @@ void RunServer(const std::string& db_path) {
          "password" : ""
      }
 
-    })"_json;
+    })";
 
 
   gkvs::Driver *driver = gkvs::create_aerospike_driver(aerospike_conf, FLAGS_lua_dir);
