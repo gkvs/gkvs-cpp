@@ -73,7 +73,7 @@ namespace gkvs {
                                   ::gkvs::BatchHeadResult *response) override {
 
 
-            if (!request->list().empty()) {
+            if (!request->operation().empty()) {
 
                 _driver->multiGetHead(request, response);
 
@@ -101,7 +101,7 @@ namespace gkvs {
         grpc::Status multiGet(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
                               ::gkvs::BatchRecordResult *response) override {
 
-            if (!request->list().empty()) {
+            if (!request->operation().empty()) {
 
                 _driver->multiGet(request, response);
             }

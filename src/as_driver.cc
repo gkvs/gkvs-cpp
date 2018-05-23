@@ -37,18 +37,15 @@
 #include <glog/logging.h>
 
 #include "driver.h"
+#include "as_driver.h"
 
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
 
 
-#define AS_MAX_LOG_STR 1024
-static bool glog_callback(as_log_level level, const char * func, const char * file, uint32_t line, const char * fmt, ...);
-
-static gkvs::Status_Code parse_aerospike_status(as_status status);
-
 namespace gkvs {
+
 
     class StatusErr final {
 
@@ -76,7 +73,7 @@ namespace gkvs {
 
         Status_Code _statusCode = Status_Code_ERROR_INTERNAL;
         int _errorCode = AEROSPIKE_ERR;
-        std::string _errorMessage = "";
+        const char* _errorMessage = "";
 
     };
 
@@ -180,9 +177,11 @@ namespace gkvs {
 
         }
 
-        virtual void multiGetHead(const ::gkvs::BatchKeyOperation *request, ::gkvs::BatchHeadResult *response) override {
+        void multiGetHead(const ::gkvs::BatchKeyOperation *request, ::gkvs::BatchHeadResult *response) override {
 
-            uint32_t size = request->list().size();
+            multiGetHead_context context = { this, response };
+
+            uint32_t size = static_cast<uint32_t>(request->operation().size());
 
             as_batch batch;
             as_batch_inita(&batch, size);
@@ -192,17 +191,17 @@ namespace gkvs {
 
             for (uint32_t  i = 0; i < size; ++i) {
 
-                const KeyOperation &operation = request->list(i);
+                const KeyOperation &operation = request->operation(i);
 
                 if (!operation.has_key()) {
-                    HeadResult* result = response->add_list();
+                    HeadResult* result = response->add_result();
                     result->set_sequencenum(operation.sequencenum());
                     bad_request("empty key", result->mutable_status());
                     continue;
                 }
 
                 if (!operation.has_op()) {
-                    HeadResult* result = response->add_list();
+                    HeadResult* result = response->add_result();
                     result->set_sequencenum(operation.sequencenum());
                     bad_request("empty op", result->mutable_status());
                     continue;
@@ -210,7 +209,7 @@ namespace gkvs {
 
                 StatusErr statusErr;
                 if (!valid_key(operation.key(), statusErr)) {
-                    HeadResult* result = response->add_list();
+                    HeadResult* result = response->add_result();
                     result->set_sequencenum(operation.sequencenum());
                     statusErr.to_status(result->mutable_status());
                     continue;
@@ -222,12 +221,13 @@ namespace gkvs {
 
                 as_key* key = as_batch_keyat(&batch, i);
                 if (!init_key(operation.key(), *key, statusErr)) {
-                    HeadResult* result = response->add_list();
+                    HeadResult* result = response->add_result();
                     result->set_sequencenum(operation.sequencenum());
                     statusErr.to_status(result->mutable_status());
                     continue;
                 }
 
+                context.key_map[key] = &operation;
                 actual_size++;
             }
 
@@ -237,8 +237,11 @@ namespace gkvs {
 
             as_policy_batch pol;
             init_batch_policy(max_timeout, &pol);
+            pol.send_set_name = true;
 
-            multiGetHead_context context = { this, response };
+            if (actual_size >= _min_concurrent_batch_size) {
+                pol.concurrent = true;
+            }
 
             as_error err;
             as_status status = aerospike_batch_exists(&_as, &err, &pol, &batch, static_multiGetHead_callback, &context);
@@ -250,6 +253,7 @@ namespace gkvs {
 
             AerospikeDriver* instance;
             ::gkvs::BatchHeadResult *response;
+            std::unordered_map<const as_key*, const KeyOperation*, as_key_hash, as_key_equal> key_map;
 
         };
 
@@ -266,18 +270,29 @@ namespace gkvs {
 
             for (uint32_t i = 0; i < n; ++i) {
 
-                HeadResult *headResult = response->add_list();
+                HeadResult *result = response->add_result();
 
-                // fix me
-                headResult->set_sequencenum(-1);
+                const as_key* key = results[i].key;
+                if (key) {
+
+                    const KeyOperation* operation = context->key_map[key];
+                    if (operation) {
+                        result->set_sequencenum(operation->sequencenum());
+
+                        if (operation->includekeyinresult()) {
+                            result->mutable_key()->CopyFrom(operation->key());
+                        }
+                    }
+
+                }
 
                 as_status status = results[i].result;
 
                 if (status == AEROSPIKE_OK) {
 
                     const as_record *recordRef = &results[i].record;
-                    head_result(const_cast<as_record *>(recordRef), headResult->mutable_head());
-                    success(headResult->mutable_status());
+                    head_result(const_cast<as_record *>(recordRef), result->mutable_head());
+                    success(result->mutable_status());
 
                 }
                 else if (status == AEROSPIKE_ERR_RECORD_NOT_FOUND) {
@@ -285,10 +300,10 @@ namespace gkvs {
                     // return no head, means no record was found, this is not an error, it is like a map interface for records
                     // not like database interface
 
-                    success(headResult->mutable_status());
+                    success(result->mutable_status());
                 }
                 else {
-                    error(results[i].result, headResult->mutable_status());
+                    error(results[i].result, result->mutable_status());
                 }
 
             }
@@ -413,6 +428,7 @@ namespace gkvs {
         as_policy_commit_level _commit_level = AS_POLICY_COMMIT_LEVEL_ALL;
         as_policy_key _send_key = AS_POLICY_KEY_SEND;
         as_policy_replica _replica = AS_POLICY_REPLICA_SEQUENCE;
+        uint32_t _min_concurrent_batch_size = 5;
 
 
     protected:
@@ -564,7 +580,7 @@ namespace gkvs {
 
             int size = key.columnkey_size();
 
-            const char** bins = new const char*[size+1];
+            const char ** bins = new const char*[size+1];
 
             for (int i = 0; i != size; ++i) {
                 bins[i] = key.columnkey(i).c_str();
@@ -738,7 +754,7 @@ namespace gkvs {
 
             const Record& record = request->record();
 
-            uint16_t size = static_cast<uint16_t>(record.columns().size());
+            auto size = static_cast<uint16_t>(record.columns().size());
 
             as_record* rec = as_record_new(size);
 
