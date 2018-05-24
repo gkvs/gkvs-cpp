@@ -44,10 +44,8 @@ namespace gkvs {
     // conf_str is the json config
     Driver* create_aerospike_driver(const std::string &conf_str, const std::string &lua_path);
 
-}
-
-namespace gkvs_tests {
-
     bool as_run_tests();
 
+
 }
+

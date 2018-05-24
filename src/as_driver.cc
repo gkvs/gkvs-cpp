@@ -48,6 +48,10 @@
 
 using json = nlohmann::json;
 
+#define AS_MAX_LOG_STR 1024
+static bool glog_callback(as_log_level level, const char * func, const char * file, uint32_t line, const char * fmt, ...);
+
+static gkvs::Status_Code parse_aerospike_status(as_status status);
 
 namespace gkvs {
 
@@ -584,36 +588,18 @@ namespace gkvs {
 
                 if (value && includeValue) {
 
-                    as_val_t type = as_val_type(value);
+                    as_value_binarer binarer;
+                    binarer.set(value);
 
-                    if (type == AS_BYTES) {
-                        as_bytes bytes = value->bytes;
-
-                        if (includeValueDigest) {
-                            Ripend160Hash hash;
-                            hash.apply(bytes.value, bytes.size);
-                            recordValue->set_raw(hash.data(), hash.size());
-                        }
-                        else {
-                            recordValue->set_raw(bytes.value, bytes.size);
-                        }
-
-                    } else {
-                        char *pstr = as_val_tostring(value);
-                        // if value can not be converted to string, then we ignore it
-                        if (pstr) {
-
-                            if (includeValueDigest) {
-                                Ripend160Hash hash;
-                                hash.apply(pstr);
-                                recordValue->set_raw(hash.data(), hash.size());
-                            }
-                            else {
-                                recordValue->set_raw(pstr);
-                            }
-                            cf_free(pstr);
-                        }
+                    if (includeValueDigest) {
+                        Ripend160Hash hash;
+                        hash.apply(binarer.data(), binarer.size());
+                        recordValue->set_raw(hash.data(), hash.size());
                     }
+                    else {
+                        recordValue->set_raw(binarer.data(), binarer.size());
+                    }
+
                 }
 
 
@@ -634,21 +620,12 @@ namespace gkvs {
 
             if (key->valuep) {
 
-                as_key_value* value = key->valuep;
-                as_val_t type = as_val_type(value);
+                as_value_binarer binarer;
+                binarer.set(key->valuep);
 
-                if (type == AS_BYTES) {
-                    as_bytes bytes = value->bytes;
-                    res->set_raw(bytes.value, bytes.size);
+                if (binarer.has()) {
+                    res->set_raw(binarer.data(), binarer.size());
                     setup = true;
-                } else {
-                    char *pstr = as_val_tostring(value);
-                    // if value can not be converted to string, then we ignore it
-                    if (pstr) {
-                        res->set_raw(pstr);
-                        setup = true;
-                        cf_free(pstr);
-                    }
                 }
 
             }
@@ -1108,6 +1085,7 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc
 
         as_scan scan;
         as_scan_init(&scan, _namespace.c_str(), tableName.c_str());
+        scan.deserialize_list_map = false;
 
         if (!include_value(request->output())) {
             as_scan_set_nobins(&scan, true);

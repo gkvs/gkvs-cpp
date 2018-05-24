@@ -185,7 +185,7 @@ void run_tests() {
 
     bool passed = true;
 
-    passed &= gkvs_tests::as_run_tests();
+    passed &= gkvs::as_run_tests();
 
     if (passed) {
         std::cout << "SUCCESS" << std::endl;
