@@ -21,21 +21,16 @@
 #include "crypto.h"
 
 
-std::string gkvs::hash_ripemd160(const char* pstr) {
+void gkvs::Ripend160Hash::apply(const char* pstr) {
 
-    unsigned char digest[RIPEMD160_DIGEST_LENGTH];
-    RIPEMD160( (const uint8_t*) pstr, strlen(pstr) + 1, digest);
-
-    return std::string((char*) digest, RIPEMD160_DIGEST_LENGTH);
+    RIPEMD160 ((const uint8_t*) pstr, strlen(pstr) + 1, _hash);
 
 }
 
-std::string gkvs::hash_ripemd160(const uint8_t* data, uint32_t size) {
+void gkvs::Ripend160Hash::apply(const uint8_t* data, uint32_t size) {
 
-    unsigned char digest[RIPEMD160_DIGEST_LENGTH];
-    RIPEMD160(data, size, digest);
+    RIPEMD160 (data, size, _hash);
 
-    return std::string((char*) digest, RIPEMD160_DIGEST_LENGTH);
 }
 
 

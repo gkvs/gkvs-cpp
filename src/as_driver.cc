@@ -35,6 +35,8 @@
 #include <aerospike/aerospike_batch.h>
 #include <aerospike/as_scan.h>
 #include <aerospike/aerospike_scan.h>
+#include <aerospike/as_query.h>
+#include <aerospike/aerospike_query.h>
 
 #include <glog/logging.h>
 
@@ -340,6 +342,19 @@ namespace gkvs {
 
         }
 
+        void init_query_policy(int totalTimeoutMillis, as_policy_query* pol) {
+
+            as_policy_query_init(pol);
+
+            if (totalTimeoutMillis > 0) {
+                pol->base.total_timeout = static_cast<uint32_t>(totalTimeoutMillis);
+            }
+
+            pol->base.max_retries = _max_retries;
+            pol->base.sleep_between_retries = _sleep_between_retries;
+            pol->deserialize = false;
+
+        }
 
         void success(Status *status) {
             status->set_code(Status_Code_SUCCESS);
@@ -452,7 +467,7 @@ namespace gkvs {
 
         const char** allocate_bins(const Select& select) {
 
-            size_t size = select.column_size();
+            int size = select.column_size();
 
             const char ** bins = new const char*[size+1];
 
@@ -575,7 +590,9 @@ namespace gkvs {
                         as_bytes bytes = value->bytes;
 
                         if (includeValueDigest) {
-                            recordValue->set_raw(hash_ripemd160(bytes.value, bytes.size));
+                            Ripend160Hash hash;
+                            hash.apply(bytes.value, bytes.size);
+                            recordValue->set_raw(hash.data(), hash.size());
                         }
                         else {
                             recordValue->set_raw(bytes.value, bytes.size);
@@ -587,7 +604,9 @@ namespace gkvs {
                         if (pstr) {
 
                             if (includeValueDigest) {
-                                recordValue->set_raw(hash_ripemd160(pstr));
+                                Ripend160Hash hash;
+                                hash.apply(pstr);
+                                recordValue->set_raw(hash.data(), hash.size());
                             }
                             else {
                                 recordValue->set_raw(pstr);
@@ -1036,35 +1055,6 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
     return true;
 }
 
-/**
- * as_query_predexp_inita(&q, 3);
- * as_query_predexp_add(&q, as_predexp_rec_last_update());
- * as_query_predexp_add(&q, as_predexp_integer_value(g_tstampns));
- * as_query_predexp_add(&q, as_predexp_integer_greater());
- *
- * AS_EXTERN as_predexp_base* as_predexp_rec_void_time()
- *
- */
-
-/**
- * as_query_predexp_inita(&q, 3);
- * as_query_predexp_add(&q, as_predexp_rec_void_time());
- * as_query_predexp_add(&q, as_predexp_integer_value(0));
- * as_query_predexp_add(&q, as_predexp_integer_equal());
- *
- * AS_EXTERN as_predexp_base* as_predexp_rec_last_update();
- */
-
-/**
- *  as_query_predexp_inita(&q, 3);
- * as_query_predexp_add(&q, as_predexp_rec_digest_modulo(3));
- * as_query_predexp_add(&q, as_predexp_integer_value(1));
- * as_query_predexp_add(&q, as_predexp_integer_equal());
- *
- * AS_EXTERN as_predexp_base* as_predexp_rec_digest_modulo(int32_t mod);
- *
- */
-
 
 void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::ValueResult> *writer) {
 
@@ -1078,36 +1068,72 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc
         return;
     }
 
-
     as_error err;
-
-    as_scan scan;
-    as_scan_init(&scan, _namespace.c_str(), tableName.c_str());
-
-    if (!include_value(request->output())) {
-        as_scan_set_nobins(&scan, true);
-    }
-
-    scan.priority = AS_SCAN_PRIORITY_LOW;
-
-    if (request->has_select()) {
-        uint16_t len = static_cast<uint16_t>(request->select().column().size());
-        as_scan_select_init(&scan, len);
-
-        for (auto &col : request->select().column()) {
-            as_scan_select(&scan, col.c_str());
-        }
-
-    }
-
-    as_policy_scan pol;
-    init_scan_policy(request->op().timeout(), &pol);
-
     scan_context context { this, writer, request };
 
-    aerospike_scan_foreach(&_as, &err, &pol, &scan, static_scan_callback, &context);
+    if (request->has_bucket()) {
 
-    as_scan_destroy(&scan);
+        as_query query;
+        as_query_init(&query, _namespace.c_str(), tableName.c_str());
+
+        if (!include_value(request->output())) {
+            query.no_bins = true;
+        }
+
+        if (request->has_select()) {
+            uint16_t len = static_cast<uint16_t>(request->select().column().size());
+            as_query_select_init(&query, len);
+
+            for (auto &col : request->select().column()) {
+                as_query_select(&query, col.c_str());
+            }
+
+        }
+
+        const Bucket& bucket = request->bucket();
+        as_query_predexp_init(&query, 3);
+        as_query_predexp_add(&query, as_predexp_rec_digest_modulo(bucket.totalnum()));
+        as_query_predexp_add(&query, as_predexp_integer_value(bucket.bucketnum()));
+        as_query_predexp_add(&query, as_predexp_integer_equal());
+
+        as_policy_query pol;
+        init_query_policy(request->op().timeout(), &pol);
+
+        aerospike_query_foreach(&_as, &err, &pol, &query, static_scan_callback, &context);
+
+        as_query_destroy(&query);
+
+    }
+    else {
+
+        as_scan scan;
+        as_scan_init(&scan, _namespace.c_str(), tableName.c_str());
+
+        if (!include_value(request->output())) {
+            as_scan_set_nobins(&scan, true);
+        }
+
+        scan.priority = AS_SCAN_PRIORITY_LOW;
+
+        if (request->has_select()) {
+            uint16_t len = static_cast<uint16_t>(request->select().column().size());
+            as_scan_select_init(&scan, len);
+
+            for (auto &col : request->select().column()) {
+                as_scan_select(&scan, col.c_str());
+            }
+
+        }
+
+        as_policy_scan pol;
+        init_scan_policy(request->op().timeout(), &pol);
+
+        aerospike_scan_foreach(&_as, &err, &pol, &scan, static_scan_callback, &context);
+
+        as_scan_destroy(&scan);
+
+    }
+
 
 }
 

@@ -10,9 +10,33 @@
 
 namespace gkvs {
 
-    std::string hash_ripemd160(const char* pstr);
+    class Ripend160Hash final {
 
-    std::string hash_ripemd160(const uint8_t *data, uint32_t size);
+    public:
+
+        Ripend160Hash() {
+            memset(_hash, 0, _size);
+        }
+
+         void apply(const char* pstr);
+
+         void apply(const uint8_t *data, uint32_t size);
+
+         inline size_t size() {
+             return _size;
+         }
+
+         inline const uint8_t* data() {
+            return _hash;
+         }
+
+    private:
+
+        const static size_t _size = 20;
+        uint8_t _hash[_size];
+
+    };
+
 
 }
 
