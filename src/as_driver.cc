@@ -40,6 +40,7 @@
 
 #include "driver.h"
 #include "as_driver.h"
+#include "crypto.h"
 
 #include <nlohmann/json.hpp>
 
@@ -550,6 +551,7 @@ namespace gkvs {
         void value_result(as_record *rec, ValueResult *result, const OutputOptions &out) {
 
             bool includeValue = include_value(out);
+            bool includeValueDigest = include_value_digest(out);
 
             as_record_iterator it;
             as_record_iterator_init(&it, rec);
@@ -571,12 +573,25 @@ namespace gkvs {
 
                     if (type == AS_BYTES) {
                         as_bytes bytes = value->bytes;
-                        recordValue->set_raw(bytes.value, bytes.size);
+
+                        if (includeValueDigest) {
+                            recordValue->set_raw(hash_ripemd160(bytes.value, bytes.size));
+                        }
+                        else {
+                            recordValue->set_raw(bytes.value, bytes.size);
+                        }
+
                     } else {
                         char *pstr = as_val_tostring(value);
                         // if value can not be converted to string, then we ignore it
                         if (pstr) {
-                            recordValue->set_raw(pstr);
+
+                            if (includeValueDigest) {
+                                recordValue->set_raw(hash_ripemd160(pstr));
+                            }
+                            else {
+                                recordValue->set_raw(pstr);
+                            }
                             cf_free(pstr);
                         }
                     }

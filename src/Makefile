@@ -15,18 +15,21 @@
 # limitations under the License.
 #
 
+# brew openssl requirement in env
+PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
+
 HOST_SYSTEM = $(shell uname | cut -f 1 -d_)
 SYSTEM ?= $(HOST_SYSTEM)
 CXX = g++
-CPPFLAGS += `pkg-config --cflags protobuf grpc`
+CPPFLAGS += `pkg-config --cflags protobuf grpc openssl`
 CPPFLAGS += -I../modules/nlohmann_json/single_include
 CXXFLAGS += -std=c++11
 ifeq ($(SYSTEM),Darwin)
-LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags`\
+LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags openssl`\
            -lgrpc++_reflection\
            -ldl
 else
-LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags`\
+LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags openssl`\
            -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed\
            -ldl
 endif
@@ -45,11 +48,11 @@ all: system-check $(PROJECT)_client $(PROJECT)_server
 $(PROJECT)_client: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_client.o helper.o
 	$(CXX) $^ $(LDFLAGS) -o $@
 
-$(PROJECT)_server: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o as_driver_tests.o
+$(PROJECT)_server: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o as_driver_tests.o crypto.o
 	$(CXX) $^ $(LDFLAGS) $(AEROFLAGS) -o $@
 
-as_driver.o: as_driver.cc
-	$(CXX) $^ $(CXXFLAGS) -c -o $@
+#crypto.o: crypto.cc
+#	$(CXX) $^ -c -o $@
 
 %.grpc.pb.cc: %.proto
 	$(PROTOC) -I $(PROTOS_PATH) --grpc_out=. --plugin=protoc-gen-grpc=$(GRPC_CPP_PLUGIN_PATH) $<
