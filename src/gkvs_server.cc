@@ -147,6 +147,7 @@ namespace gkvs {
 }
 
 DEFINE_string(lua_dir, "", "User lua scripts directory for Aerospike");
+DEFINE_bool(run_tests, false, "Run functional tests");
 
 
 void RunServer(const std::string& db_path) {
@@ -180,6 +181,21 @@ void RunServer(const std::string& db_path) {
 }
 
 
+void run_tests() {
+
+    bool passed = true;
+
+    passed &= gkvs_tests::as_run_tests();
+
+    if (passed) {
+        std::cout << "SUCCESS" << std::endl;
+    }
+    else {
+        std::cout << "FAILURE" << std::endl;
+    }
+
+}
+
 int main(int argc, char** argv) {
 
     google::InitGoogleLogging(argv[0]);
@@ -192,7 +208,12 @@ int main(int argc, char** argv) {
 
     std::cout << "gKVS Server lua_dir:" <<  FLAGS_lua_dir << std::endl;
 
-    RunServer(".");
+    if (FLAGS_run_tests) {
+        run_tests();
+    }
+    else {
+        RunServer(".");
+    }
 
     google::ShutdownGoogleLogging();
     gflags::ShutDownCommandLineFlags();

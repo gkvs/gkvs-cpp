@@ -43,9 +43,9 @@ vpath %.proto $(PROTOS_PATH)
 all: system-check $(PROJECT)_client $(PROJECT)_server
 
 $(PROJECT)_client: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_client.o helper.o
-	$(CXX) $^ $(LDFLAGS) $(AEROFLAGS) -o $@
+	$(CXX) $^ $(LDFLAGS) -o $@
 
-$(PROJECT)_server: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o
+$(PROJECT)_server: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o as_driver_tests.o
 	$(CXX) $^ $(LDFLAGS) $(AEROFLAGS) -o $@
 
 as_driver.o: as_driver.cc

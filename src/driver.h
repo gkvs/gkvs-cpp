@@ -46,4 +46,8 @@ namespace gkvs {
 
 }
 
+namespace gkvs_tests {
 
+    bool as_run_tests();
+
+}
