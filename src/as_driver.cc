@@ -51,7 +51,7 @@ using json = nlohmann::json;
 #define AS_MAX_LOG_STR 1024
 static bool glog_callback(as_log_level level, const char * func, const char * file, uint32_t line, const char * fmt, ...);
 
-static gkvs::Status_Code parse_aerospike_status(as_status status);
+static gkvs::StatusCode parse_aerospike_status(as_status status);
 
 namespace gkvs {
 
@@ -61,13 +61,13 @@ namespace gkvs {
     public:
 
         void bad_request(const char* errorMessage) {
-            _statusCode = Status_Code_ERROR_INTERNAL;
+            _statusCode = StatusCode::ERROR_INTERNAL;
             _errorCode = AEROSPIKE_ERR;
             _errorMessage = errorMessage;
         }
 
         void driver_error(const char* errorMessage) {
-            _statusCode = Status_Code_ERROR_DRIVER;
+            _statusCode = StatusCode::ERROR_DRIVER;
             _errorCode = AEROSPIKE_ERR;
             _errorMessage = errorMessage;
         }
@@ -80,7 +80,7 @@ namespace gkvs {
 
     private:
 
-        Status_Code _statusCode = Status_Code_ERROR_INTERNAL;
+        StatusCode _statusCode = StatusCode::ERROR_INTERNAL;
         int _errorCode = AEROSPIKE_ERR;
         const char* _errorMessage = "";
 
@@ -361,23 +361,23 @@ namespace gkvs {
         }
 
         void success(Status *status) {
-            status->set_code(Status_Code_SUCCESS);
+            status->set_code(StatusCode::SUCCESS);
         }
 
         void bad_request(const char* errorMessage, Status *status) {
-            status->set_code(Status_Code_ERROR_BAD_REQUEST);
-            status->set_errorcode(Status_Code_ERROR_BAD_REQUEST);
+            status->set_code(StatusCode::ERROR_BAD_REQUEST);
+            status->set_errorcode(StatusCode::ERROR_BAD_REQUEST);
             status->set_errormessage(errorMessage);
         }
 
         void unsupported(const char* errorMessage, Status *status) {
-            status->set_code(Status_Code_ERROR_UNSUPPORTED);
-            status->set_errorcode(Status_Code_ERROR_UNSUPPORTED);
+            status->set_code(StatusCode::ERROR_UNSUPPORTED);
+            status->set_errorcode(StatusCode::ERROR_UNSUPPORTED);
             status->set_errormessage(errorMessage);
         }
 
         void driver_error(const char* errorMessage, Status *status) {
-            status->set_code(Status_Code_ERROR_DRIVER);
+            status->set_code(StatusCode::ERROR_DRIVER);
             status->set_errorcode(AEROSPIKE_ERR);
             status->set_errormessage(errorMessage);
         }
@@ -514,9 +514,9 @@ namespace gkvs {
         bool include_value(const OutputOptions &out) {
 
             switch(out) {
-                case VALUE:
+                case VALUE_RAW:
                 case VALUE_DIGEST:
-                case KEY_VALUE:
+                case KEY_VALUE_RAW:
                 case KEY_VALUE_DIGEST:
                     return true;
                 default:
@@ -543,7 +543,7 @@ namespace gkvs {
 
             switch(out) {
                 case KEY:
-                case KEY_VALUE:
+                case KEY_VALUE_RAW:
                 case KEY_VALUE_DIGEST:
                     return true;
                 default:
@@ -746,22 +746,22 @@ static bool glog_callback(as_log_level level, const char * func, const char * fi
 }
 
 
-static gkvs::Status_Code parse_aerospike_status(as_status status) {
+static gkvs::StatusCode parse_aerospike_status(as_status status) {
 
     switch(status) {
 
         case AEROSPIKE_OK:
-            return gkvs::Status_Code::Status_Code_SUCCESS;
+            return gkvs::StatusCode::SUCCESS;
 
         case AEROSPIKE_NO_MORE_RECORDS:
         case AEROSPIKE_QUERY_END:
-            return gkvs::Status_Code::Status_Code_SUCCESS_END_STREAM;
+            return gkvs::StatusCode::SUCCESS_END_STREAM;
 
         case AEROSPIKE_ERR_RECORD_GENERATION:
-            return gkvs::Status_Code::Status_Code_SUCCESS_NOT_UPDATED;
+            return gkvs::StatusCode::SUCCESS_NOT_UPDATED;
 
         case AEROSPIKE_ERR_NAMESPACE_NOT_FOUND:
-            return gkvs::Status_Code::Status_Code_ERROR_RES_NOT_FOUND;
+            return gkvs::StatusCode::ERROR_RES_NOT_FOUND;
 
         case AEROSPIKE_ERR_RECORD_KEY_MISMATCH:
         case AEROSPIKE_ERR_GEO_INVALID_GEOJSON:
@@ -779,17 +779,17 @@ static gkvs::Status_Code parse_aerospike_status(as_status status) {
         case AEROSPIKE_ERR_INDEX_MAXCOUNT:
         case AEROSPIKE_ERR_UDF_NOT_FOUND:
         case AEROSPIKE_ERR_LUA_FILE_NOT_FOUND:
-            return gkvs::Status_Code::Status_Code_ERROR_BAD_REQUEST;
+            return gkvs::StatusCode::ERROR_BAD_REQUEST;
 
         case AEROSPIKE_ERR_BIN_EXISTS:
         case AEROSPIKE_ERR_RECORD_EXISTS:
         case AEROSPIKE_ERR_RECORD_NOT_FOUND:
         case AEROSPIKE_ERR_FAIL_ELEMENT_EXISTS:
         case AEROSPIKE_ERR_FAIL_ELEMENT_NOT_FOUND:
-            return gkvs::Status_Code::Status_Code_ERROR_POLICY;
+            return gkvs::StatusCode::ERROR_POLICY;
 
         case AEROSPIKE_ERR_CLUSTER_CHANGE:
-            return gkvs::Status_Code::Status_Code_ERROR_MIGRATION;
+            return gkvs::StatusCode::ERROR_MIGRATION;
 
         case AEROSPIKE_ERR_CLUSTER:
         case AEROSPIKE_ERR_INVALID_HOST:
@@ -797,7 +797,7 @@ static gkvs::Status_Code parse_aerospike_status(as_status status) {
         case AEROSPIKE_ERR_NO_MORE_CONNECTIONS:
         case AEROSPIKE_ERR_ASYNC_CONNECTION:
         case AEROSPIKE_ERR_CONNECTION:
-            return gkvs::Status_Code::Status_Code_ERROR_NETWORK;
+            return gkvs::StatusCode::ERROR_NETWORK;
 
         case AEROSPIKE_SECURITY_NOT_SUPPORTED:
         case AEROSPIKE_SECURITY_NOT_ENABLED:
@@ -812,41 +812,41 @@ static gkvs::Status_Code parse_aerospike_status(as_status status) {
         case AEROSPIKE_INVALID_ROLE:
         case AEROSPIKE_ROLE_ALREADY_EXISTS:
         case AEROSPIKE_INVALID_PRIVILEGE:
-            return gkvs::Status_Code::Status_Code_ERROR_AUTH;
+            return gkvs::StatusCode::ERROR_AUTH;
 
         case AEROSPIKE_ERR_FAIL_FORBIDDEN:
         case AEROSPIKE_ERR_ALWAYS_FORBIDDEN:
         case AEROSPIKE_ERR_TLS_ERROR:
         case AEROSPIKE_NOT_AUTHENTICATED:
         case AEROSPIKE_ROLE_VIOLATION:
-            return gkvs::Status_Code::Status_Code_ERROR_FORBIDDEN;
+            return gkvs::StatusCode::ERROR_FORBIDDEN;
 
         case AEROSPIKE_ERR_QUERY_TIMEOUT:
         case AEROSPIKE_ERR_TIMEOUT:
-            return gkvs::Status_Code::Status_Code_ERROR_TIMEOUT;
+            return gkvs::StatusCode::ERROR_TIMEOUT;
 
         case AEROSPIKE_ERR_BATCH_QUEUES_FULL:
         case AEROSPIKE_ERR_DEVICE_OVERLOAD:
         case AEROSPIKE_ERR_ASYNC_QUEUE_FULL:
         case AEROSPIKE_ERR_QUERY_QUEUE_FULL:
         case AEROSPIKE_ERR_BATCH_MAX_REQUESTS_EXCEEDED:
-            return gkvs::Status_Code::Status_Code_ERROR_OVERLOAD;
+            return gkvs::StatusCode::ERROR_OVERLOAD;
 
         case AEROSPIKE_ERR_SERVER_FULL:
         case AEROSPIKE_ERR_INDEX_OOM:
-            return gkvs::Status_Code::Status_Code_ERROR_OVERFLOW;
+            return gkvs::StatusCode::ERROR_OVERFLOW;
 
         case AEROSPIKE_ERR_RECORD_BUSY:
-            return gkvs::Status_Code::Status_Code_ERROR_LOCKED;
+            return gkvs::StatusCode::ERROR_LOCKED;
 
         case AEROSPIKE_ERR_SCAN_ABORTED:
         case AEROSPIKE_ERR_CLIENT_ABORT:
         case AEROSPIKE_ERR_QUERY_ABORTED:
-            return gkvs::Status_Code::Status_Code_ERROR_ABORTED;
+            return gkvs::StatusCode::ERROR_ABORTED;
 
         case AEROSPIKE_ERR_UNSUPPORTED_FEATURE:
         case AEROSPIKE_ERR_BATCH_DISABLED:
-            return gkvs::Status_Code::Status_Code_ERROR_UNSUPPORTED;
+            return gkvs::StatusCode::ERROR_UNSUPPORTED;
 
         case AEROSPIKE_ERR_CLIENT:
         case AEROSPIKE_ERR_SERVER:
@@ -854,10 +854,10 @@ static gkvs::Status_Code parse_aerospike_status(as_status status) {
         case AEROSPIKE_ERR_INDEX:
         case AEROSPIKE_ERR_QUERY:
         case AEROSPIKE_ERR_UDF:
-            return gkvs::Status_Code::Status_Code_ERROR_DRIVER;
+            return gkvs::StatusCode::ERROR_DRIVER;
 
         default:
-            return gkvs::Status_Code::Status_Code_ERROR_INTERNAL;
+            return gkvs::StatusCode::ERROR_INTERNAL;
 
 
     }
@@ -1011,7 +1011,7 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
                 value_result(const_cast<as_record *>(rec), result, operation->output());
             }
             else {
-                value_result(const_cast<as_record *>(rec), result, OutputOptions::VALUE);
+                value_result(const_cast<as_record *>(rec), result, OutputOptions::VALUE_RAW);
             }
 
             success(result->mutable_status());
@@ -1302,7 +1302,7 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
     }
     else if (status == AEROSPIKE_ERR_RECORD_GENERATION && request->compareandput()) {
 
-        response->mutable_status()->set_code(Status_Code_SUCCESS_NOT_UPDATED);
+        response->mutable_status()->set_code(StatusCode::SUCCESS_NOT_UPDATED);
 
     }
     else {
