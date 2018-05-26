@@ -259,11 +259,12 @@ namespace gkvs {
         as_policy_key _send_key = AS_POLICY_KEY_SEND;
         as_policy_replica _replica = AS_POLICY_REPLICA_SEQUENCE;
         uint32_t _min_concurrent_batch_size = 5;
+        OperationOptions default_options;
 
 
     protected:
 
-        void init_read_policy(const Operation& op, as_policy_read* pol) {
+        void init_read_policy(const OperationOptions& op, as_policy_read* pol) {
 
             as_policy_read_init(pol);
 
@@ -279,7 +280,7 @@ namespace gkvs {
         }
 
 
-        void init_write_policy(const Operation& op, as_policy_write* pol) {
+        void init_write_policy(const OperationOptions& op, as_policy_write* pol) {
 
             as_policy_write_init(pol);
 
@@ -296,7 +297,7 @@ namespace gkvs {
             pol->commit_level = _commit_level;
         }
 
-        void init_remove_policy(const Operation& op, as_policy_remove* pol) {
+        void init_remove_policy(const OperationOptions& op, as_policy_remove* pol) {
 
             as_policy_remove_init(pol);
 
@@ -332,28 +333,22 @@ namespace gkvs {
 
         }
 
-        void init_scan_policy(int totalTimeoutMillis, as_policy_scan* pol) {
+        void init_scan_policy(as_policy_scan* pol) {
 
             as_policy_scan_init(pol);
 
-            if (totalTimeoutMillis > 0) {
-                pol->base.total_timeout = static_cast<uint32_t>(totalTimeoutMillis);
-            }
-
+            pol->base.total_timeout = 0;
             pol->base.max_retries = _max_retries;
             pol->base.sleep_between_retries = _sleep_between_retries;
             pol->fail_on_cluster_change = false;
 
         }
 
-        void init_query_policy(int totalTimeoutMillis, as_policy_query* pol) {
+        void init_query_policy(as_policy_query* pol) {
 
             as_policy_query_init(pol);
 
-            if (totalTimeoutMillis > 0) {
-                pol->base.total_timeout = static_cast<uint32_t>(totalTimeoutMillis);
-            }
-
+            pol->base.total_timeout = 0;
             pol->base.max_retries = _max_retries;
             pol->base.sleep_between_retries = _sleep_between_retries;
             pol->deserialize = false;
@@ -894,13 +889,6 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
             continue;
         }
 
-        if (!operation.has_op()) {
-            ValueResult *result = response->add_result();
-            result->set_sequencenum(operation.sequencenum());
-            bad_request("empty op", result->mutable_status());
-            continue;
-        }
-
         StatusErr statusErr;
         if (!valid_key(operation.key(), statusErr)) {
             ValueResult *result = response->add_result();
@@ -909,8 +897,8 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
             continue;
         }
 
-        if (operation.op().timeout() > max_timeout) {
-            max_timeout = operation.op().timeout();
+        if (operation.has_options() && operation.options().timeout() > max_timeout) {
+            max_timeout = operation.options().timeout();
         }
 
         as_key *key = as_batch_keyat(&batch, i);
@@ -1074,7 +1062,7 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc
         as_query_predexp_add(&query, as_predexp_integer_equal());
 
         as_policy_query pol;
-        init_query_policy(request->op().timeout(), &pol);
+        init_query_policy(&pol);
 
         aerospike_query_foreach(&_as, &err, &pol, &query, static_scan_callback, &context);
 
@@ -1104,7 +1092,7 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc
         }
 
         as_policy_scan pol;
-        init_scan_policy(request->op().timeout(), &pol);
+        init_scan_policy(&pol);
 
         aerospike_scan_foreach(&_as, &err, &pol, &scan, static_scan_callback, &context);
 
@@ -1159,11 +1147,6 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::
     // for client identification purpose
     key_result(request->key(), response, request->output());
 
-    if (!request->has_op()) {
-        bad_request("no op", response->mutable_status());
-        return;
-    }
-
     StatusErr statusErr;
     if (!valid_key(request->key(), statusErr)) {
         statusErr.to_status(response->mutable_status());
@@ -1178,7 +1161,7 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::
     }
 
     as_policy_read pol;
-    init_read_policy(request->op(), &pol);
+    init_read_policy(request->has_options() ? request->options() : default_options, &pol);
 
     as_record* rec = nullptr;
     as_error err;
@@ -1234,11 +1217,6 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
         return;
     }
 
-    if (!request->has_op()) {
-        bad_request("no op", response->mutable_status());
-        return;
-    }
-
     StatusErr statusErr;
     if (!valid_key(request->key(), statusErr)) {
         statusErr.to_status(response->mutable_status());
@@ -1271,7 +1249,7 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
     }
 
     as_policy_write pol;
-    init_write_policy(request->op(), &pol);
+    init_write_policy(request->has_options() ? request->options() : default_options, &pol);
 
     int ttl = request->ttl();
     if (ttl > 0) {
@@ -1321,11 +1299,6 @@ void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkv
         return;
     }
 
-    if (!request->has_op()) {
-        bad_request("no op", response->mutable_status());
-        return;
-    }
-
     if (request->has_select()) {
         unsupported("selected columns can not be deleted", response->mutable_status());
         return;
@@ -1344,7 +1317,7 @@ void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkv
     }
 
     as_policy_remove pol;
-    init_remove_policy(request->op(), &pol);
+    init_remove_policy(request->has_options() ? request->options() : default_options, &pol);
 
     as_error err;
     as_status status;
