@@ -18,7 +18,7 @@ Generic Key-Value Store
 * Value is byte array NOT NULL
 
 SLA Operations:
-* Get - gets value by key and version, if not found return null
+* Get - gets value (and version) by key, if not found return null
 * Put - puts not null value by key (can not put null values)
 * CompareAndPut - puts not null value by key and checks version
 * Remove - removes value by key
@@ -32,4 +32,9 @@ SLA Multi Operations:
 NON SQL Operations:
 * Scan - query all key-value pairs with some conditions, supports bucket selection ( buckerNumber = hash(key) % n)
 
-
+PIT (Point In Time) support if configured:
+* Stores all values as Map<timestamp, value> map
+* Put - calls map.put(timestamp, value)
+* Remove - calls map.remove(timestamp, value)
+* Get - calls map.filter(pit <= request_pit).max(pit), if request_pit not defined, then pit = Current.timestamp();
+* Scan - the same as Get
