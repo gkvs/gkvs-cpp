@@ -260,12 +260,12 @@ namespace gkvs {
         as_policy_key _send_key = AS_POLICY_KEY_SEND;
         as_policy_replica _replica = AS_POLICY_REPLICA_SEQUENCE;
         uint32_t _min_concurrent_batch_size = 5;
-        OperationOptions default_options;
+        RequestOptions default_options;
 
 
     protected:
 
-        void init_read_policy(const OperationOptions& op, as_policy_read* pol) {
+        void init_read_policy(const RequestOptions& op, as_policy_read* pol) {
 
             as_policy_read_init(pol);
 
@@ -281,7 +281,7 @@ namespace gkvs {
         }
 
 
-        void init_write_policy(const OperationOptions& op, as_policy_write* pol) {
+        void init_write_policy(const RequestOptions& op, as_policy_write* pol) {
 
             as_policy_write_init(pol);
 
@@ -298,7 +298,7 @@ namespace gkvs {
             pol->commit_level = _commit_level;
         }
 
-        void init_remove_policy(const OperationOptions& op, as_policy_remove* pol) {
+        void init_remove_policy(const RequestOptions& op, as_policy_remove* pol) {
 
             as_policy_remove_init(pol);
 
