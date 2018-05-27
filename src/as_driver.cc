@@ -37,6 +37,7 @@
 #include <aerospike/aerospike_scan.h>
 #include <aerospike/as_query.h>
 #include <aerospike/aerospike_query.h>
+#include <aerospike/as_nil.h>
 
 #include <glog/logging.h>
 
@@ -1299,11 +1300,6 @@ void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkv
         return;
     }
 
-    if (request->has_select()) {
-        unsupported("selected columns can not be deleted", response->mutable_status());
-        return;
-    }
-
     StatusErr statusErr;
     if (!valid_key(request->key(), statusErr)) {
         statusErr.to_status(response->mutable_status());
@@ -1316,13 +1312,42 @@ void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkv
         return;
     }
 
-    as_policy_remove pol;
-    init_remove_policy(request->has_options() ? request->options() : default_options, &pol);
-
     as_error err;
     as_status status;
 
-    status = aerospike_key_remove(&_as, &err, &pol, &key);
+    if (request->has_select()) {
+
+        as_policy_write pol;
+        init_write_policy(request->has_options() ? request->options() : default_options, &pol);
+
+        const Select& select = request->select();
+
+        auto size = static_cast<uint16_t>(select.column().size());
+
+        as_record* rec = as_record_new(size);
+
+        as_bin_value bin_val_nil;
+        bin_val_nil.nil = as_nil;
+
+        for (const std::string &col : select.column()) {
+            as_record_set(rec, col.c_str(), &bin_val_nil);
+        }
+
+        status = aerospike_key_put(&_as, &err, &pol, &key, rec);
+
+        as_record_destroy(rec);
+
+    }
+    else {
+
+        // remove the whole record
+
+        as_policy_remove pol;
+        init_remove_policy(request->has_options() ? request->options() : default_options, &pol);
+
+        status = aerospike_key_remove(&_as, &err, &pol, &key);
+
+    }
 
     if (status == AEROSPIKE_OK) {
 
