@@ -184,7 +184,7 @@ namespace gkvs {
             KeyOperation request;
             ValueResult response;
 
-            if (stream->Read(&request)) {
+            while (stream->Read(&request)) {
 
                 response.Clear();
 
@@ -213,7 +213,7 @@ namespace gkvs {
             PutOperation request;
             StatusResult response;
 
-            if (stream->Read(&request)) {
+            while (stream->Read(&request)) {
 
                 response.Clear();
 
@@ -236,7 +236,7 @@ namespace gkvs {
             KeyOperation request;
             StatusResult response;
 
-            if (stream->Read(&request)) {
+            while (stream->Read(&request)) {
 
                 response.Clear();
 
