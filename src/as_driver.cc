@@ -871,7 +871,7 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
     uint32_t size = static_cast<uint32_t>(request->operation().size());
 
     as_batch batch;
-    as_batch_inita(&batch, size);
+    as_batch_init(&batch, size);
 
     bool includeValue = false;
     bool useSelect = true;
@@ -903,7 +903,7 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
             max_timeout = operation.options().timeout();
         }
 
-        as_key *key = as_batch_keyat(&batch, i);
+        as_key *key = as_batch_keyat(&batch, actual_size);
         if (!init_key(operation.key(), *key, statusErr)) {
             ValueResult *result = response->add_result();
             result->set_requestid(operation.options().requestid());
@@ -1122,7 +1122,7 @@ bool gkvs::AerospikeDriver::scan_callback(const as_val* val, scan_context* conte
     as_record* rec = as_record_fromval(val);
     if (rec) {
 
-        // no sequence num
+        result.set_requestid(operation->options().requestid());
         success(result.mutable_status());
         metadata_result(rec, &result);
         key_result(&rec->key, &result, operation->output());
