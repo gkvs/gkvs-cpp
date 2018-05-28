@@ -1122,6 +1122,7 @@ bool gkvs::AerospikeDriver::scan_callback(const as_val* val, scan_context* conte
     if (rec) {
 
         // no sequence num
+        success(result.mutable_status());
         metadata_result(rec, &result);
         key_result(&rec->key, &result, operation->output());
         value_result(rec, &result, operation->output());
