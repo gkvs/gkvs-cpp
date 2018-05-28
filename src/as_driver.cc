@@ -261,6 +261,7 @@ namespace gkvs {
         as_policy_replica _replica = AS_POLICY_REPLICA_SEQUENCE;
         uint32_t _min_concurrent_batch_size = 5;
         RequestOptions default_options;
+        bool _durable_delete = false;
 
 
     protected:
@@ -307,7 +308,7 @@ namespace gkvs {
             }
             pol->base.max_retries = _max_retries;
             pol->base.sleep_between_retries = _sleep_between_retries;
-            pol->durable_delete = true;
+            pol->durable_delete = _durable_delete;
             pol->replica = _replica;
 
             pol->commit_level = _commit_level;
@@ -1354,6 +1355,12 @@ void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkv
 
         success(response->mutable_status());
 
+    }
+    else if (status == AEROSPIKE_ERR_RECORD_NOT_FOUND) {
+
+        // this is not an error
+
+        response->mutable_status()->set_code(StatusCode::SUCCESS_NOT_UPDATED);
     }
     else {
         error(err, response->mutable_status());
