@@ -886,7 +886,7 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
 
         if (!operation.has_key()) {
             ValueResult *result = response->add_result();
-            result->set_sequencenum(operation.sequencenum());
+            result->set_requestid(operation.options().requestid());
             bad_request("empty key", result->mutable_status());
             continue;
         }
@@ -894,7 +894,7 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
         StatusErr statusErr;
         if (!valid_key(operation.key(), statusErr)) {
             ValueResult *result = response->add_result();
-            result->set_sequencenum(operation.sequencenum());
+            result->set_requestid(operation.options().requestid());
             statusErr.to_status(result->mutable_status());
             continue;
         }
@@ -906,7 +906,7 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
         as_key *key = as_batch_keyat(&batch, i);
         if (!init_key(operation.key(), *key, statusErr)) {
             ValueResult *result = response->add_result();
-            result->set_sequencenum(operation.sequencenum());
+            result->set_requestid(operation.options().requestid());
             statusErr.to_status(result->mutable_status());
             continue;
         }
@@ -981,7 +981,7 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
 
         if (operation) {
             // for client identification purpose
-            result->set_sequencenum(operation->sequencenum());
+            result->set_requestid(operation->options().requestid());
             key_result(operation->key(), result, operation->output());
         }
         else {
@@ -1140,7 +1140,7 @@ bool gkvs::AerospikeDriver::scan_callback(const as_val* val, scan_context* conte
 void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::ValueResult *response) {
 
     // for client identification purpose
-    response->set_sequencenum(request->sequencenum());
+    response->set_requestid(request->options().requestid());
 
     if (!request->has_key()) {
         bad_request("no key", response->mutable_status());
@@ -1213,7 +1213,7 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::
 
 void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::StatusResult *response) {
 
-    response->set_sequencenum(request->sequencenum());
+    response->set_requestid(request->options().requestid());
 
     if (!request->has_key()) {
         bad_request("no key", response->mutable_status());
@@ -1295,7 +1295,7 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
 
 void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkvs::StatusResult *response) {
 
-    response->set_sequencenum(request->sequencenum());
+    response->set_requestid(request->options().requestid());
 
     if (!request->has_key()) {
         bad_request("no key", response->mutable_status());
