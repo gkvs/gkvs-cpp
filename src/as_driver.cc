@@ -1328,11 +1328,8 @@ void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkv
 
         as_record* rec = as_record_new(size);
 
-        as_bin_value bin_val_nil;
-        bin_val_nil.nil = as_nil;
-
         for (const std::string &col : select.column()) {
-            as_record_set(rec, col.c_str(), &bin_val_nil);
+            as_record_set_nil(rec, col.c_str());
         }
 
         status = aerospike_key_put(&_as, &err, &pol, &key, rec);
