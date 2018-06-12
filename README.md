@@ -80,7 +80,8 @@ SHOW CLUSTERS;
 SHOW USERS;
 SHOW RULES;
 SHOW MOVES;
-SHOW REPLICATIONS;
+SHOW ZONES;
+SHOW PIPELINES;
 
 ADD USER alex CONFIG @alex.json;
 DROP USER alex;
@@ -92,8 +93,11 @@ DROP RULE alex_rule1;
 ADD MOVE move1 CONFIG '{ "from": "as1.test", "to": "as2.test" }';
 DROP MOVE move1;
 
-ADD REPLICATION rep1 CONFIG '';
-DROP REPLICATION rep1;
+ADD ZONE us_w CONFIG '{"zone": "us_w", "seed": "5.5.5.5:4040"}';
+DROP ZONE us_w;
+
+ADD PIPELINE pipe1 CONFIG '';
+DROP PIPLELINE pipe1;
 
 ```
 
