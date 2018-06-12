@@ -71,16 +71,16 @@ ADD TABLE as1.test CONFIG @test.json;
 DROP TABLE as1.test;
 
 // only views are available for clients
-ADD VIEW test ON as1.test;
+ADD VIEW test CONFIG '{"type": "simple", "table": "as1.test"}';
 DROP VIEW test;
-
-MOVE TABLE as1.test TO as2.test; // keeps view positing to a new table
 
 SHOW VIEWS;
 SHOW TABLES;
 SHOW CLUSTERS;
 SHOW USERS;
 SHOW RULES;
+SHOW MOVES;
+SHOW REPLICATIONS;
 
 ADD USER alex CONFIG @alex.json;
 DROP USER alex;
@@ -88,5 +88,12 @@ DROP USER alex;
 // rules are working only on views
 ADD RULE alex_rule1 rwd 'test'; 
 DROP RULE alex_rule1;
+
+ADD MOVE move1 CONFIG '{ "from": "as1.test", "to": "as2.test" }';
+DROP MOVE move1;
+
+ADD REPLICATION rep1 CONFIG '';
+DROP REPLICATION rep1;
+
 ```
 
