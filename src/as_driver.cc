@@ -122,6 +122,7 @@ namespace gkvs {
 
             as_config config;
             as_config_init(&config);
+            config.fail_if_not_connected = false;
 
             _namespace = conf["namespace"];
 

@@ -179,7 +179,7 @@ namespace gkvs {
 
 DEFINE_string(lua_dir, "", "User lua scripts directory for Aerospike");
 DEFINE_bool(run_tests, false, "Run functional tests");
-
+DEFINE_string(host_port, "0.0.0.0:4040", "Bind server host:port");
 
 void RunServer(const std::string& db_path) {
 
@@ -200,7 +200,7 @@ void RunServer(const std::string& db_path) {
 
   gkvs::Driver *driver = gkvs::create_aerospike_driver(aerospike_conf, FLAGS_lua_dir);
 
-  std::string server_address("0.0.0.0:4040");
+  std::string server_address(FLAGS_host_port);
   gkvs::GenericStoreImpl service(driver);
 
   ServerBuilder builder;
