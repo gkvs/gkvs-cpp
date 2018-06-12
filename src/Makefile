@@ -24,7 +24,7 @@ CXX = g++
 CPPFLAGS += `pkg-config --cflags protobuf grpc openssl`
 CPPFLAGS += -I../modules/nlohmann_json/single_include
 CPPFLAGS += -I../modules/aerospike-common/src/include
-CXXFLAGS += -std=c++11
+CXXFLAGS += -std=c++11 -O3
 ifeq ($(SYSTEM),Darwin)
 LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags openssl`\
            -lgrpc++_reflection\

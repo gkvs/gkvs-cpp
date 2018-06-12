@@ -52,12 +52,8 @@ namespace gkvs {
 
     public:
 
-        explicit GenericStoreImpl(gkvs::Driver *driver) {
+        explicit GenericStoreImpl(gkvs::Driver* driver) {
             _driver = driver;
-        }
-
-        ~GenericStoreImpl() override {
-            delete _driver;
         }
 
 
@@ -83,7 +79,18 @@ namespace gkvs {
         grpc::Status getAll(::grpc::ServerContext *context,
                             ::grpc::ServerReaderWriter<::gkvs::ValueResult, ::gkvs::KeyOperation> *stream) override {
 
-            _driver->getAll(stream);
+            KeyOperation request;
+            ValueResult response;
+
+            while (stream->Read(&request)) {
+
+                response.Clear();
+
+                _driver->get(&request, &response);
+
+                stream->Write(response);
+
+            }
 
             return grpc::Status::OK;
 
@@ -110,7 +117,20 @@ namespace gkvs {
         grpc::Status putAll(::grpc::ServerContext *context,
                       ::grpc::ServerReaderWriter<::gkvs::StatusResult, ::gkvs::PutOperation> *stream) override {
 
-            _driver->putAll(stream);
+
+            PutOperation request;
+            StatusResult response;
+
+            while (stream->Read(&request)) {
+
+                response.Clear();
+
+                _driver->put(&request, &response);
+
+                stream->Write(response);
+
+            }
+
 
             return grpc::Status::OK;
         }
@@ -126,7 +146,18 @@ namespace gkvs {
         grpc::Status removeAll(::grpc::ServerContext *context,
                                ::grpc::ServerReaderWriter<::gkvs::StatusResult, ::gkvs::KeyOperation> *stream) override {
 
-            _driver->removeAll(stream);
+            KeyOperation request;
+            StatusResult response;
+
+            while (stream->Read(&request)) {
+
+                response.Clear();
+
+                _driver->remove(&request, &response);
+
+                stream->Write(response);
+
+            }
 
             return grpc::Status::OK;
 
@@ -134,7 +165,7 @@ namespace gkvs {
 
 
     private:
-        gkvs::Driver *_driver;
+        gkvs::Driver* _driver;
 
 
 
@@ -181,7 +212,7 @@ void RunServer(const std::string& db_path) {
 }
 
 
-void run_tests() {
+bool run_tests() {
 
     bool passed = true;
 
@@ -193,6 +224,8 @@ void run_tests() {
     else {
         std::cout << "FAILURE" << std::endl;
     }
+
+    return passed;
 
 }
 
@@ -208,15 +241,22 @@ int main(int argc, char** argv) {
 
     std::cout << "gKVS Server lua_dir:" <<  FLAGS_lua_dir << std::endl;
 
+    int exitCode = 0;
     if (FLAGS_run_tests) {
-        run_tests();
+        exitCode = run_tests() ? 0 : 1;
     }
     else {
-        RunServer(".");
+        try {
+            RunServer(".");
+        }
+        catch (const std::exception& e) {
+            std::cout << "server run exception:" << e.what() << std::endl;
+            exitCode = 1;
+        }
     }
 
     google::ShutdownGoogleLogging();
     gflags::ShutDownCommandLineFlags();
 
-    return 0;
+    return exitCode;
 }

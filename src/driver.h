@@ -32,12 +32,9 @@ namespace gkvs {
         virtual ~Driver() = default;
         virtual void get(const KeyOperation* request, ValueResult* response) = 0;
         virtual void multiGet(const BatchKeyOperation *request, BatchValueResult *response) = 0;
-        virtual void getAll(::grpc::ServerReaderWriter<::gkvs::ValueResult, KeyOperation> *stream) = 0;
         virtual void scan(const ScanOperation* request, ::grpc::ServerWriter< ValueResult>* writer) = 0;
         virtual void put(const PutOperation* request, StatusResult* response) = 0;
-        virtual void putAll(::grpc::ServerReaderWriter<StatusResult, PutOperation>* stream) = 0;
         virtual void remove(const KeyOperation* request, StatusResult* response) = 0;
-        virtual void removeAll(::grpc::ServerReaderWriter<StatusResult, KeyOperation> *stream) = 0;
 
     };
 

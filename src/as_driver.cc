@@ -23,6 +23,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <thread>
 
 #include <aerospike/aerospike.h>
 #include <aerospike/aerospike_key.h>
@@ -178,24 +179,6 @@ namespace gkvs {
 
         }
 
-
-        void getAll(::grpc::ServerReaderWriter<::gkvs::ValueResult, ::gkvs::KeyOperation> *stream) override {
-
-            KeyOperation request;
-            ValueResult response;
-
-            while (stream->Read(&request)) {
-
-                response.Clear();
-
-                do_get(&request, &response);
-
-                stream->Write(response);
-
-            }
-
-        }
-
         void scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer) override {
 
             do_scan(request, writer);
@@ -208,43 +191,9 @@ namespace gkvs {
 
         }
 
-        void putAll(::grpc::ServerReaderWriter<StatusResult, PutOperation> *stream) override {
-
-            PutOperation request;
-            StatusResult response;
-
-            while (stream->Read(&request)) {
-
-                response.Clear();
-
-                do_put(&request, &response);
-
-                stream->Write(response);
-
-            }
-
-        }
-
         void remove(const KeyOperation *request, StatusResult *response) override {
 
             do_remove(request, response);
-
-        }
-
-        void removeAll(::grpc::ServerReaderWriter<StatusResult, KeyOperation> *stream) override {
-
-            KeyOperation request;
-            StatusResult response;
-
-            while (stream->Read(&request)) {
-
-                response.Clear();
-
-                do_remove(&request, &response);
-
-                stream->Write(response);
-
-            }
 
         }
 
@@ -711,27 +660,27 @@ static bool glog_callback(as_log_level level, const char * func, const char * fi
         switch(level) {
 
             case AS_LOG_LEVEL_ERROR:
-                LOG(ERROR) << str << std::endl;
+                LOG(ERROR) << std::this_thread::get_id() << ":" << str << std::endl;
                 break;
 
             case AS_LOG_LEVEL_WARN:
-                LOG(WARNING) << str << std::endl;
+                LOG(WARNING) << std::this_thread::get_id() << ":" << str << std::endl;
                 break;
 
             case AS_LOG_LEVEL_INFO:
-                LOG(INFO) << str << std::endl;
+                LOG(INFO) << std::this_thread::get_id() << ":" << str << std::endl;
                 break;
 
             case AS_LOG_LEVEL_DEBUG:
-                DLOG(INFO) << str << std::endl;
+                DLOG(INFO) << std::this_thread::get_id() << ":" << str << std::endl;
                 break;
 
             case AS_LOG_LEVEL_TRACE:
-                VLOG(0) << str << std::endl;
+                VLOG(0) << std::this_thread::get_id() << ":" << str << std::endl;
                 break;
 
             default:
-                LOG(ERROR) << "unknown log level: " << level << ", msg: " << str << std::endl;
+                LOG(ERROR) << std::this_thread::get_id() << ":" << "unknown log level: " << level << ", msg: " << str << std::endl;
                 break;
 
         }
