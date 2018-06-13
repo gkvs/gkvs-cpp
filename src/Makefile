@@ -1,5 +1,5 @@
 #
-# Copyright 2018 gKVS authors.
+# Copyright 2018-present GKVS authors.
 # Copyright 2015 gRPC authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
