@@ -1,5 +1,5 @@
 # gkvs
-Generic Key-Value Store
+Generic Key-Value Service
 
 ### Vision
 * Federated tables
