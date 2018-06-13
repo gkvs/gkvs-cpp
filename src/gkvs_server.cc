@@ -181,6 +181,17 @@ DEFINE_string(lua_dir, "", "User lua scripts directory for Aerospike");
 DEFINE_bool(run_tests, false, "Run functional tests");
 DEFINE_string(host_port, "0.0.0.0:4040", "Bind server host:port");
 
+
+std::unique_ptr<Server> server = nullptr;
+
+
+void onTerminate(int sign)
+{
+    if (server != nullptr) {
+        server->Shutdown();
+    }
+}
+
 void RunServer(const std::string& db_path) {
 
 
@@ -206,8 +217,12 @@ void RunServer(const std::string& db_path) {
   ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
-  std::unique_ptr<Server> server(builder.BuildAndStart());
+  server = builder.BuildAndStart();
+
   std::cout << "Server listening on " << server_address << std::endl;
+
+  signal(SIGINT, &onTerminate);
+  signal(SIGTERM, &onTerminate);
   server->Wait();
 }
 
@@ -233,13 +248,13 @@ int main(int argc, char** argv) {
 
     google::InitGoogleLogging(argv[0]);
 
-    gflags::SetUsageMessage("gKVS Server)");
+    gflags::SetUsageMessage("GKVS Server)");
     gflags::SetVersionString("0.1");
 
     gflags::ParseCommandLineFlags(&argc, &argv,
             /*remove_flags=*/true);
 
-    std::cout << "gKVS Server lua_dir:" <<  FLAGS_lua_dir << std::endl;
+    std::cout << "GKVS Server lua_dir:" <<  FLAGS_lua_dir << std::endl;
 
     int exitCode = 0;
     if (FLAGS_run_tests) {
@@ -257,6 +272,8 @@ int main(int argc, char** argv) {
 
     google::ShutdownGoogleLogging();
     gflags::ShutDownCommandLineFlags();
+
+    std::cout << "GKVS Server Shutdown: " << exitCode << std::endl;
 
     return exitCode;
 }
