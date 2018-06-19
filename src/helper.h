@@ -21,3 +21,12 @@
 #include <string>
 #include <vector>
 
+namespace gkvs {
+
+    std::string get_keys();
+
+    std::string get_hostname();
+
+    std::string get_file_content(const std::string& filename);
+
+}

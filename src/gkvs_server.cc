@@ -177,10 +177,10 @@ namespace gkvs {
 
 }
 
+
 DEFINE_string(lua_dir, "", "User lua scripts directory for Aerospike");
 DEFINE_bool(run_tests, false, "Run functional tests");
 DEFINE_string(host_port, "0.0.0.0:4040", "Bind server host:port");
-
 
 std::unique_ptr<Server> server = nullptr;
 
@@ -193,7 +193,6 @@ void onTerminate(int sign)
 }
 
 void RunServer(const std::string& db_path) {
-
 
     std::string aerospike_conf = R"({
 
@@ -208,14 +207,37 @@ void RunServer(const std::string& db_path) {
 
     })";
 
+    std::string gkvs_keys = gkvs::get_keys();
+    std::string hostname = gkvs::get_hostname();
 
-  gkvs::Driver *driver = gkvs::create_aerospike_driver(aerospike_conf, FLAGS_lua_dir);
+    std::cout << "Hostname: " << hostname << std::endl;
 
-  std::string server_address(FLAGS_host_port);
-  gkvs::GenericStoreImpl service(driver);
+    std::string server_key = gkvs_keys + "/" + hostname + ".key";
+    std::string server_crt = gkvs_keys + "/" + hostname + ".crt";
+    std::string root_crt = gkvs_keys + "/GkvsAuth.crt";
+
+    std::cout << "Use server_key: " << server_key << std::endl;
+    std::cout << "Use server_crt: " << server_crt << std::endl;
+    std::cout << "Use root_crt: " << root_crt << std::endl;
+
+    gkvs::Driver *driver = gkvs::create_aerospike_driver(aerospike_conf, FLAGS_lua_dir);
+
+    std::string server_address(FLAGS_host_port);
+    gkvs::GenericStoreImpl service(driver);
+
+    grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp = {
+            gkvs::get_file_content(server_key),
+            gkvs::get_file_content(server_crt)
+    };
+
+  grpc::SslServerCredentialsOptions ssl_options(GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE);
+  ssl_options.pem_key_cert_pairs.push_back(pkcp);
+  ssl_options.pem_root_certs = gkvs::get_file_content(root_crt);
+
+  std::shared_ptr<grpc::ServerCredentials> creds = grpc::SslServerCredentials(ssl_options);
 
   ServerBuilder builder;
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+  builder.AddListeningPort(server_address, creds);
   builder.RegisterService(&service);
   server = builder.BuildAndStart();
 
