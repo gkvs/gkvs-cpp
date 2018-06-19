@@ -10,7 +10,7 @@ Generic Key-Value Service
 * Automatic load-balancer
 * Failover support
 * Multi datacenter support
-
+* All traffic is encrypted by SSL
 
 ### API Design
 
