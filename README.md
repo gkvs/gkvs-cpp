@@ -51,7 +51,7 @@ Build the project:
 make
 ```
 
-Run server
+Run sync_server
 ```
 ./src/gkvs_server
 ```

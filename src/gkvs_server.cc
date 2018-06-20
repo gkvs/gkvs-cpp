@@ -52,7 +52,7 @@ namespace gkvs {
 
     public:
 
-        explicit GenericStoreImpl(gkvs::Driver* driver) {
+        explicit GenericStoreImpl(std::shared_ptr<gkvs::Driver> driver) {
             _driver = driver;
         }
 
@@ -165,7 +165,7 @@ namespace gkvs {
 
 
     private:
-        gkvs::Driver* _driver;
+        std::shared_ptr<gkvs::Driver> _driver;
 
 
 
@@ -180,15 +180,16 @@ namespace gkvs {
 
 DEFINE_string(lua_dir, "", "User lua scripts directory for Aerospike");
 DEFINE_bool(run_tests, false, "Run functional tests");
-DEFINE_string(host_port, "0.0.0.0:4040", "Bind server host:port");
+DEFINE_string(host_port, "0.0.0.0:4040", "Bind sync server host:port");
 
-std::unique_ptr<Server> server = nullptr;
+std::unique_ptr<gkvs::GenericStoreImpl> sync_service = nullptr;
+std::unique_ptr<Server> sync_server = nullptr;
 
 
 void onTerminate(int sign)
 {
-    if (server != nullptr) {
-        server->Shutdown();
+    if (sync_server != nullptr) {
+        sync_server->Shutdown();
     }
 }
 
@@ -230,26 +231,35 @@ std::shared_ptr<grpc::ServerCredentials> create_server_credentials() {
     return creds;
 }
 
+void build_sync_server(std::shared_ptr<gkvs::Driver> driver, std::shared_ptr<grpc::ServerCredentials> creds) {
+
+    std::string server_address(FLAGS_host_port);
+
+    sync_service = std::unique_ptr<gkvs::GenericStoreImpl> ( new gkvs::GenericStoreImpl(driver) );
+
+    ServerBuilder builder;
+    builder.AddListeningPort(server_address, creds);
+    builder.RegisterService(sync_service.get());
+
+    sync_server = builder.BuildAndStart();
+
+    std::cout << "Server listening on " << server_address << std::endl;
+
+}
 
 void RunServer(const std::string& db_path, const std::string& as_filename) {
 
     std::shared_ptr<gkvs::Driver> driver = create_aerospike_driver(as_filename);
-
-    std::string server_address(FLAGS_host_port);
-    gkvs::GenericStoreImpl service(driver.get());
-
     std::shared_ptr<grpc::ServerCredentials> creds = create_server_credentials();
 
-    ServerBuilder builder;
-    builder.AddListeningPort(server_address, creds);
-    builder.RegisterService(&service);
-    server = builder.BuildAndStart();
-
-    std::cout << "Server listening on " << server_address << std::endl;
+    build_sync_server(driver, creds);
 
     signal(SIGINT, &onTerminate);
     signal(SIGTERM, &onTerminate);
-    server->Wait();
+
+    gkvs::GenericStore::AsyncService service;
+
+    sync_server->Wait();
 
 }
 
@@ -292,7 +302,7 @@ int main(int argc, char** argv) {
             RunServer(".", "as1.json");
         }
         catch (const std::exception& e) {
-            std::cout << "server run exception:" << e.what() << std::endl;
+            std::cout << "sync_server run exception:" << e.what() << std::endl;
             exitCode = 1;
         }
     }
