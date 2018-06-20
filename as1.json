@@ -1,0 +1,12 @@
+{
+
+  "namespace": "test",
+
+  "cluster": {
+    "host" : "192.168.56.101",
+    "port" : 3000,
+    "username" : "",
+    "password" : ""
+  }
+
+}

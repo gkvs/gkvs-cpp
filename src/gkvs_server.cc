@@ -192,20 +192,16 @@ void onTerminate(int sign)
     }
 }
 
-void RunServer(const std::string& db_path) {
+std::shared_ptr<gkvs::Driver> create_aerospike_driver(const std::string& filename) {
 
-    std::string aerospike_conf = R"({
+    std::string aerospike_conf = gkvs::get_file_content(filename);
 
-    "namespace": "test",
+    gkvs::Driver *driver = gkvs::create_aerospike_driver(aerospike_conf, FLAGS_lua_dir);
 
-    "cluster": {
-         "host" : "192.168.56.101",
-         "port" : 3000,
-         "username" : "",
-         "password" : ""
-     }
+    return std::shared_ptr<gkvs::Driver>(driver);
+}
 
-    })";
+std::shared_ptr<grpc::ServerCredentials> create_server_credentials() {
 
     std::string gkvs_keys = gkvs::get_keys();
     std::string hostname = gkvs::get_hostname();
@@ -220,32 +216,41 @@ void RunServer(const std::string& db_path) {
     std::cout << "Use server_crt: " << server_crt << std::endl;
     std::cout << "Use root_crt: " << root_crt << std::endl;
 
-    gkvs::Driver *driver = gkvs::create_aerospike_driver(aerospike_conf, FLAGS_lua_dir);
-
-    std::string server_address(FLAGS_host_port);
-    gkvs::GenericStoreImpl service(driver);
-
     grpc::SslServerCredentialsOptions::PemKeyCertPair pkcp = {
             gkvs::get_file_content(server_key),
             gkvs::get_file_content(server_crt)
     };
 
-  grpc::SslServerCredentialsOptions ssl_options(GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE);
-  ssl_options.pem_key_cert_pairs.push_back(pkcp);
-  ssl_options.pem_root_certs = gkvs::get_file_content(root_crt);
+    grpc::SslServerCredentialsOptions ssl_options(GRPC_SSL_DONT_REQUEST_CLIENT_CERTIFICATE);
+    ssl_options.pem_key_cert_pairs.push_back(pkcp);
+    ssl_options.pem_root_certs = gkvs::get_file_content(root_crt);
 
-  std::shared_ptr<grpc::ServerCredentials> creds = grpc::SslServerCredentials(ssl_options);
+    std::shared_ptr<grpc::ServerCredentials> creds = grpc::SslServerCredentials(ssl_options);
 
-  ServerBuilder builder;
-  builder.AddListeningPort(server_address, creds);
-  builder.RegisterService(&service);
-  server = builder.BuildAndStart();
+    return creds;
+}
 
-  std::cout << "Server listening on " << server_address << std::endl;
 
-  signal(SIGINT, &onTerminate);
-  signal(SIGTERM, &onTerminate);
-  server->Wait();
+void RunServer(const std::string& db_path, const std::string& as_filename) {
+
+    std::shared_ptr<gkvs::Driver> driver = create_aerospike_driver(as_filename);
+
+    std::string server_address(FLAGS_host_port);
+    gkvs::GenericStoreImpl service(driver.get());
+
+    std::shared_ptr<grpc::ServerCredentials> creds = create_server_credentials();
+
+    ServerBuilder builder;
+    builder.AddListeningPort(server_address, creds);
+    builder.RegisterService(&service);
+    server = builder.BuildAndStart();
+
+    std::cout << "Server listening on " << server_address << std::endl;
+
+    signal(SIGINT, &onTerminate);
+    signal(SIGTERM, &onTerminate);
+    server->Wait();
+
 }
 
 
@@ -284,7 +289,7 @@ int main(int argc, char** argv) {
     }
     else {
         try {
-            RunServer(".");
+            RunServer(".", "as1.json");
         }
         catch (const std::exception& e) {
             std::cout << "server run exception:" << e.what() << std::endl;
