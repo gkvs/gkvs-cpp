@@ -101,3 +101,13 @@ DROP PIPLELINE pipe1;
 
 ```
 
+### Build
+
+```
+git submodule update --init
+cd modules
+cd aerospike-client-c
+git submodule update --init
+make EVENT_LIB=libevent
+```
+

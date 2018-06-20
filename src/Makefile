@@ -23,21 +23,24 @@ SYSTEM ?= $(HOST_SYSTEM)
 CXX = g++
 CPPFLAGS += `pkg-config --cflags protobuf grpc openssl`
 CPPFLAGS += -I../modules/nlohmann_json/single_include
-CPPFLAGS += -I../modules/aerospike-common/src/include
+#CPPFLAGS += -I../modules/aerospike-common/src/include
 CXXFLAGS += -std=c++11 -O3
 ifeq ($(SYSTEM),Darwin)
 LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags openssl --static`\
            -lgrpc++_reflection\
            -ldl
+AS_TARGET=Darwin-x86_64
 else
 LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags openssl --static`\
            -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed\
            -ldl
+AS_TARGET=Linux-x86_64
 endif
+CPPFLAGS += -I../modules/aerospike-client-c/target/$(AS_TARGET)/include -I../modules/aerospike-client-c/modules/common/src/include
 PROTOC = protoc
 GRPC_CPP_PLUGIN = grpc_cpp_plugin
 GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
-AEROFLAGS = -DAS_USE_LIBEVENT -levent -lssl -lcrypto -lpthread -lm -lz /Users/ashvid/CLionProjects/aerospike-client-c/target/Darwin-x86_64/lib/libaerospike.a
+AEROFLAGS = -DAS_USE_LIBEVENT -levent -levent_pthreads -lssl -lcrypto -lpthread -lm -lz ../modules/aerospike-client-c/target/$(AS_TARGET)/lib/libaerospike.a
 
 PROJECT=gkvs
 PROTOS_PATH = ../protos
