@@ -16,7 +16,7 @@
 #
 
 # brew openssl requirement in env
-PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
+# PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
 
 HOST_SYSTEM = $(shell uname | cut -f 1 -d_)
 SYSTEM ?= $(HOST_SYSTEM)

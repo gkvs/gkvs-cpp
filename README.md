@@ -111,3 +111,9 @@ git submodule update --init
 make EVENT_LIB=libevent
 ```
 
+#### Brew
+
+brew openssl requirement in env
+```
+PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
+```
