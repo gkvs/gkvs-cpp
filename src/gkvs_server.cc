@@ -47,6 +47,53 @@ using std::chrono::system_clock;
 
 namespace gkvs {
 
+    class GenericStoreAsync final {
+
+    public:
+
+        GenericStoreAsync(std::shared_ptr<gkvs::Driver> driver,
+                          std::shared_ptr<grpc::ServerCredentials> creds) {
+
+            this->_driver = driver;
+            this->_creds = creds;
+        }
+
+        ~GenericStoreAsync() {
+            _server->Shutdown();
+            _cq->Shutdown();
+        }
+
+        void run() {
+
+            std::string server_address("0.0.0.0:50051");
+
+            ServerBuilder builder;
+            builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+            builder.RegisterService(&_service);
+            _cq = builder.AddCompletionQueue();
+            _server = builder.BuildAndStart();
+            std::cout << "Server listening on " << server_address << std::endl;
+
+            // Proceed to the server's main loop.
+            loop();
+
+        }
+
+    private:
+
+        void loop() {
+
+        }
+
+
+        gkvs::GenericStore::AsyncService _service;
+        std::unique_ptr<grpc::ServerCompletionQueue> _cq;
+        std::unique_ptr<Server> _server;
+
+        std::shared_ptr<gkvs::Driver> _driver;
+        std::shared_ptr<grpc::ServerCredentials> _creds;
+
+    };
 
     class GenericStoreImpl final : public gkvs::GenericStore::Service {
 
@@ -185,12 +232,12 @@ DEFINE_string(host_port, "0.0.0.0:4040", "Bind sync server host:port");
 std::unique_ptr<gkvs::GenericStoreImpl> sync_service = nullptr;
 std::unique_ptr<Server> sync_server = nullptr;
 
-
 void onTerminate(int sign)
 {
     if (sync_server != nullptr) {
         sync_server->Shutdown();
     }
+
 }
 
 std::shared_ptr<gkvs::Driver> create_aerospike_driver(const std::string& filename) {
@@ -247,6 +294,7 @@ void build_sync_server(std::shared_ptr<gkvs::Driver> driver, std::shared_ptr<grp
 
 }
 
+
 void RunServer(const std::string& db_path, const std::string& as_filename) {
 
     std::shared_ptr<gkvs::Driver> driver = create_aerospike_driver(as_filename);
@@ -257,7 +305,9 @@ void RunServer(const std::string& db_path, const std::string& as_filename) {
     signal(SIGINT, &onTerminate);
     signal(SIGTERM, &onTerminate);
 
-    gkvs::GenericStore::AsyncService service;
+
+    gkvs::GenericStoreAsync async(driver, creds);
+    async.run();
 
     sync_server->Wait();
 

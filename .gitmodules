@@ -7,3 +7,6 @@
 [submodule "modules/aerospike-common"]
 	path = modules/aerospike-common
 	url = https://github.com/aerospike/aerospike-common
+[submodule "modules/aerospike-client-c"]
+	path = modules/aerospike-client-c
+	url = https://github.com/aerospike/aerospike-client-c
