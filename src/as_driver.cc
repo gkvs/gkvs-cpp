@@ -141,8 +141,28 @@ namespace gkvs {
 
             as_config_set_user(&config, username.c_str(), password.c_str());
 
-            //memcpy(&config.tls, &g_tls, sizeof(as_config_tls));
-            //config.auth_mode = g_auth_mode;
+            json tls = cluster["tls"];
+            if (!tls.is_null()) {
+
+                config.tls.enable = true;
+                config.tls.log_session_info = true;
+
+                as_config_tls_set_cafile(&config, tls["cafile"].get<std::string>().c_str());
+                as_config_tls_set_capath(&config, tls["capath"].get<std::string>().c_str());
+
+                config.tls.crl_check = true;
+                config.tls.crl_check_all = true;
+
+                as_config_tls_set_keyfile(&config, tls["keyfile"].get<std::string>().c_str());
+                as_config_tls_set_certfile(&config, tls["certfile"].get<std::string>().c_str());
+
+                config.tls.for_login_only = tls["login_only"].get<bool>();
+                config.auth_mode = AS_AUTH_EXTERNAL;
+            }
+            else {
+                config.auth_mode = AS_AUTH_INTERNAL;
+            }
+
 
             aerospike_init(&_as, &config);
 
@@ -215,6 +235,10 @@ namespace gkvs {
 
 
     protected:
+
+        void init_tls() {
+
+        }
 
         void init_read_policy(const RequestOptions& op, as_policy_read* pol) {
 
