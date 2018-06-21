@@ -4,6 +4,8 @@ project(gkvs C CXX)
 
 set(CMAKE_CXX_STANDARD 11)
 
+# Aerospike
+
 include_directories("../modules/aerospike-client-c/modules/common/src/include")
 
 find_library(_AS_LIB
@@ -18,11 +20,7 @@ find_library(_EVENT_PTHREADS libevent_pthreads.a event_pthreads)
 message(STATUS "Using libevent_pthreads ${_EVENT_PTHREADS}")
 
 
-
-# GRPC
-
-#add_subdirectory(modules/grpc ${CMAKE_CURRENT_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
-#message(STATUS "Using gRPC via add_subdirectory.")
+# GRPC and protobuf
 
 add_subdirectory(../modules/glog ${CMAKE_CURRENT_BINARY_DIR}/glog EXCLUDE_FROM_ALL)
 message(STATUS "Using GLOG via add_subdirectory.")
@@ -46,15 +44,8 @@ set(_GRPC_GRPCPP gRPC::grpc++)
 set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
 
 find_package(gflags CONFIG REQUIRED)
-#find_package(glog CONFIG REQUIRED)
 
-
-#set(_PROTOBUF_LIBPROTOBUF libprotobuf)
-#set(_PROTOBUF_PROTOC $<TARGET_FILE:protoc>)
-#set(_GRPC_GRPCPP grpc++_unsecure)
-#set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:grpc_cpp_plugin>)
-#set(_GFLAGS gflags)
-#set(_GLOG glog)
+# OpenSSL
 
 find_package(OpenSSL REQUIRED)
 
@@ -115,7 +106,7 @@ target_link_libraries(gkvs_server
         ${_GRPC_GRPCPP}
         ${_PROTOBUF_LIBPROTOBUF}
         glog
-        libaerospike.a
+        aerospike
         ${LIB_LIST}
         ${_EVENT}
         ${_EVENT_PTHREADS})

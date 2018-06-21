@@ -103,8 +103,10 @@ DROP PIPLELINE pipe1;
 
 ### Build
 
-Install OpenSSL and define it's location
+Install OpenSSL and define its location, example
+
 ```
+brew install openssl
 export OPENSSL_ROOT_DIR=/usr/local/Cellar/openssl/1.0.2o_1
 ```
 
@@ -113,18 +115,21 @@ Install libs
 sudo apt-get install pkg-config libevent-dev
 ```
 
-
+Fetch modules in gkvs
 ```
-git submodule update --init
+git submodule update --init --recursive
+```
+
+Build Aerospike Client
+```
 cd modules
 cd aerospike-client-c
-git submodule update --init
 make EVENT_LIB=libevent
 ```
 
-#### Brew
+#### Brew and package config
 
-brew openssl requirement in env
+brew openssl requirement in env (with make build)
 ```
 PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
 ```
