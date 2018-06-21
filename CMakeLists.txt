@@ -5,19 +5,12 @@ project(gkvs-super C CXX)
 include(ExternalProject)
 
 set(CMAKE_CXX_STANDARD 11)
-set(GFLAGS_BUILD_STATIC_LIBS ON)
-set(gRPC_GFLAGS_PROVIDER package)
-set(gRPC_BUILD_CODEGEN ON)
+#set(GFLAGS_BUILD_STATIC_LIBS ON)
+#set(gRPC_GFLAGS_PROVIDER package)
+#set(gRPC_BUILD_CODEGEN ON)
 
 # setup ENV in your bash
 set(OPENSSL_ROOT_DIR /usr/local/Cellar/openssl/1.0.2o_1)
-
-include_directories(src)
-include_directories("modules/aerospike-client-c/target/Darwin-x86_64/include")
-include_directories("modules/aerospike-client-c/modules/common/src/include")
-
-find_library(_AS_LIB aerospike)
-message(STATUS "Using Aerospike lib ${_AS_LIB}")
 
 # Builds c-ares project from the git submodule
 ExternalProject_Add(c-ares
