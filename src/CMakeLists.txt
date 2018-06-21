@@ -9,9 +9,20 @@ set(CMAKE_CXX_STANDARD 11)
 include_directories("../modules/aerospike-client-c/src/include")
 include_directories("../modules/aerospike-client-c/modules/common/src/include")
 
-find_library(_AS_LIB
-        NAMES libaerospike.a aerospike
-        HINTS ../modules/aerospike-client-c/target)
+
+if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    set(_AS_TARGET "Linux-x86_64")
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    set(_AS_TARGET "Darwin-x86_64")
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Android")
+    set(_AS_TARGET "Android-x86_64")
+else()
+    set(_AS_TARGET "Windows-x86_64")
+endif()
+
+set(_AS_LIB_PATH "../modules/aerospike-client-c/target/${_AS_TARGET}/lib")
+
+file(GLOB _AS_LIB "${_AS_LIB_PATH}/*.a")
 message(STATUS "Using Aerospike lib ${_AS_LIB}")
 
 find_library(_EVENT libevent.a event)
@@ -107,7 +118,7 @@ target_link_libraries(gkvs_server
         ${_GRPC_GRPCPP}
         ${_PROTOBUF_LIBPROTOBUF}
         glog
-        aerospike
+        ${_AS_LIB}
         ${LIB_LIST}
         ${_EVENT}
         ${_EVENT_PTHREADS})
