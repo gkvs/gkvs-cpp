@@ -224,7 +224,7 @@ namespace gkvs {
 
 }
 
-
+DEFINE_string(work_dir, ".", "Work dir");
 DEFINE_string(lua_dir, "", "User lua scripts directory for Aerospike");
 DEFINE_bool(run_tests, false, "Run functional tests");
 DEFINE_string(host_port, "0.0.0.0:4040", "Bind sync server host:port");
@@ -295,7 +295,7 @@ void build_sync_server(std::shared_ptr<gkvs::Driver> driver, std::shared_ptr<grp
 }
 
 
-void RunServer(const std::string& db_path, const std::string& as_filename) {
+void RunServer(const std::string& as_filename) {
 
     std::shared_ptr<gkvs::Driver> driver = create_aerospike_driver(as_filename);
     std::shared_ptr<grpc::ServerCredentials> creds = create_server_credentials();
@@ -348,12 +348,22 @@ int main(int argc, char** argv) {
         exitCode = run_tests() ? 0 : 1;
     }
     else {
-        try {
-            RunServer(".", "as1.json");
-        }
-        catch (const std::exception& e) {
-            std::cout << "sync_server run exception:" << e.what() << std::endl;
+
+        if (argc < 2) {
+            std::cout << "Usage: gkvs_server aerospike_config.json" << std::endl;
             exitCode = 1;
+        }
+        else {
+
+            try {
+
+                RunServer(argv[1]);
+            }
+            catch (const std::exception &e) {
+                std::cout << "sync_server run exception:" << e.what() << std::endl;
+                exitCode = 1;
+            }
+
         }
     }
 
