@@ -4,6 +4,10 @@ project(gkvs C CXX)
 
 set(CMAKE_CXX_STANDARD 11)
 
+# JSON
+
+include_directories("../modules/nlohmann_json/include")
+
 # Aerospike
 
 include_directories("../modules/aerospike-client-c/src/include")
@@ -11,20 +15,10 @@ include_directories("../modules/aerospike-client-c/modules/common/src/include")
 
 message(STATUS "Running on ${CMAKE_SYSTEM_NAME}")
 
-if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    set(_AS_TARGET "Linux-x86_64")
-elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    set(_AS_TARGET "Darwin-x86_64")
-elseif(${CMAKE_SYSTEM_NAME} MATCHES "Android")
-    set(_AS_TARGET "Android-x86_64")
-else()
-    set(_AS_TARGET "Windows-x86_64")
-endif()
-
-set(_AS_LIB_PATH "../modules/aerospike-client-c/target/${_AS_TARGET}/lib")
+set(_AS_LIB_PATH "../modules/aerospike-client-c/target/${CMAKE_SYSTEM_NAME}-x86_64/lib")
 
 file(GLOB _AS_LIB "${_AS_LIB_PATH}/libaerospike.a")
-message(STATUS "Using Aerospike library ${_AS_LIB}")
+message(STATUS "Using Aerospike Client ${_AS_LIB}")
 
 find_library(_EVENT libevent.a event)
 message(STATUS "Using libevent ${_EVENT}")
