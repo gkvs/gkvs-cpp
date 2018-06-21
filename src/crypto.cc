@@ -17,6 +17,7 @@
  */
 
 #include <openssl/ripemd.h>
+#include <cstring>
 
 #include "crypto.h"
 
