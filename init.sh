@@ -12,9 +12,3 @@ make EVENT_LIB=libevent
 popd
 popd
 
-echo "Build GKVS"
-
-mkdir build
-cd build
-cmake ..
-
