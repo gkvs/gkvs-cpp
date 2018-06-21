@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD 11)
 include_directories("../modules/aerospike-client-c/src/include")
 include_directories("../modules/aerospike-client-c/modules/common/src/include")
 
+message(STATUS "Running on ${CMAKE_SYSTEM_NAME}")
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     set(_AS_TARGET "Linux-x86_64")
@@ -22,8 +23,8 @@ endif()
 
 set(_AS_LIB_PATH "../modules/aerospike-client-c/target/${_AS_TARGET}/lib")
 
-file(GLOB _AS_LIB "${_AS_LIB_PATH}/*.a")
-message(STATUS "Using Aerospike lib ${_AS_LIB}")
+file(GLOB _AS_LIB "${_AS_LIB_PATH}/libaerospike.a")
+message(STATUS "Using Aerospike library ${_AS_LIB}")
 
 find_library(_EVENT libevent.a event)
 message(STATUS "Using libevent ${_EVENT}")
