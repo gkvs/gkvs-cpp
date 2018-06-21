@@ -122,10 +122,21 @@ git submodule update --init --recursive
 
 Build Aerospike Client
 ```
-cd modules
-cd aerospike-client-c
+pushd modules
+pushd aerospike-client-c
 make EVENT_LIB=libevent
+popd
+popd
 ```
+
+Build GKVS
+```
+mkdir build
+pushd build
+cmake ..
+popd
+```
+
 
 #### Brew and package config
 
