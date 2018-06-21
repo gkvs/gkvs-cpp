@@ -103,6 +103,17 @@ DROP PIPLELINE pipe1;
 
 ### Build
 
+Install OpenSSL and define it's location
+```
+export OPENSSL_ROOT_DIR=/usr/local/Cellar/openssl/1.0.2o_1
+```
+
+Install libs
+```
+sudo apt-get install pkg-config libevent-dev
+```
+
+
 ```
 git submodule update --init
 cd modules

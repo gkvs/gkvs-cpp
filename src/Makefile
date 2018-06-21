@@ -40,7 +40,7 @@ CPPFLAGS += -I../modules/aerospike-client-c/target/$(AS_TARGET)/include -I../mod
 PROTOC = protoc
 GRPC_CPP_PLUGIN = grpc_cpp_plugin
 GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
-AEROFLAGS = -DAS_USE_LIBEVENT -levent -levent_pthreads -lssl -lcrypto -lpthread -lm -lz ../modules/aerospike-client-c/target/$(AS_TARGET)/lib/libaerospike.a
+AEROFLAGS = -DAS_USE_LIBEVENT -levent -levent_pthreads -lssl -lcrypto -lm -lz ../modules/aerospike-client-c/target/$(AS_TARGET)/lib/libaerospike.a
 
 PROJECT=gkvs
 PROTOS_PATH = ../protos

@@ -4,9 +4,13 @@
 [submodule "modules/nlohmann_json"]
 	path = modules/nlohmann_json
 	url = https://github.com/nlohmann/json
-[submodule "modules/aerospike-common"]
-	path = modules/aerospike-common
-	url = https://github.com/aerospike/aerospike-common
 [submodule "modules/aerospike-client-c"]
 	path = modules/aerospike-client-c
 	url = https://github.com/aerospike/aerospike-client-c
+[submodule "modules/grpc"]
+	path = modules/grpc
+	url = https://github.com/grpc/grpc
+	
+[submodule "modules/glog"]
+	path = modules/glog
+	url = https://github.com/google/glog
