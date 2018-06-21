@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD 11)
 
 # Aerospike
 
+include_directories("../modules/aerospike-client-c/src/include")
 include_directories("../modules/aerospike-client-c/modules/common/src/include")
 
 find_library(_AS_LIB
