@@ -4,6 +4,14 @@ project(gkvs C CXX)
 
 set(CMAKE_CXX_STANDARD 11)
 
+message(STATUS "Running on ${CMAKE_SYSTEM_NAME}")
+
+# REDIS
+
+include_directories("../modules/hiredis")
+file(GLOB _REDIS_LIB "../modules/hiredis/libhiredis.a")
+message(STATUS "Using Redis Client ${_REDIS_LIB}")
+
 # JSON
 
 include_directories("../modules/nlohmann_json/include")
@@ -12,8 +20,6 @@ include_directories("../modules/nlohmann_json/include")
 
 include_directories("../modules/aerospike-client-c/src/include")
 include_directories("../modules/aerospike-client-c/modules/common/src/include")
-
-message(STATUS "Running on ${CMAKE_SYSTEM_NAME}")
 
 set(_AS_LIB_PATH "../modules/aerospike-client-c/target/${CMAKE_SYSTEM_NAME}-x86_64/lib")
 
@@ -113,6 +119,7 @@ target_link_libraries(gkvs_server
         ${_GRPC_GRPCPP}
         ${_PROTOBUF_LIBPROTOBUF}
         glog
+        ${_REDIS_LIB}
         ${_AS_LIB}
         ${LIB_LIST}
         ${_EVENT}

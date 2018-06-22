@@ -4,6 +4,14 @@ echo "Init modules"
 
 git submodule update --init --recursive
 
+echo "Build Redis Client"
+
+pushd modules
+pushd hiredis
+make
+popd
+popd
+
 echo "Build Aerospike Client"
 
 pushd modules

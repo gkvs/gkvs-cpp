@@ -14,3 +14,9 @@
 [submodule "modules/glog"]
 	path = modules/glog
 	url = https://github.com/google/glog
+[submodule "modules/rocksdb"]
+	path = modules/rocksdb
+	url = https://github.com/facebook/rocksdb
+[submodule "modules/hiredis"]
+	path = modules/hiredis
+	url = https://github.com/redis/hiredis

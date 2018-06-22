@@ -26,12 +26,12 @@ CPPFLAGS += -I../modules/nlohmann_json/single_include
 #CPPFLAGS += -I../modules/aerospike-common/src/include
 CXXFLAGS += -std=c++11 -O3
 ifeq ($(SYSTEM),Darwin)
-LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags openssl --static`\
+LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags openssl hiredis --static`\
            -lgrpc++_reflection\
            -ldl
 AS_TARGET=Darwin-x86_64
 else
-LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags openssl --static`\
+LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags openssl hiredis --static`\
            -Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed\
            -ldl
 AS_TARGET=Linux-x86_64

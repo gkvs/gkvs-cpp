@@ -142,5 +142,5 @@ popd
 
 brew openssl requirement in env (with make build)
 ```
-PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
+export PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
 ```
