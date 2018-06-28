@@ -23,6 +23,8 @@
 #include <aerospike/as_serializer.h>
 #include <aerospike/as_msgpack.h>
 #include <aerospike/as_record_iterator.h>
+#include <aerospike/as_map_iterator.h>
+#include <aerospike/as_hashmap_iterator.h>
 
 #include <msgpack.h>
 #include <msgpack.hpp>
@@ -31,6 +33,87 @@
 #include <msgpack/object.h>
 
 #include "as_driver.h"
+
+
+void gkvs::as_record_ser::pack_map(as_map* map) {
+
+    uint32_t size = as_map_size(map);
+    msgpack_pack_map(&pk_, size);
+
+    as_hashmap_iterator it;
+    as_hashmap_iterator_init(&it, (as_hashmap*) map);
+
+    while (as_hashmap_iterator_has_next(&it)) {
+
+        as_val *el = (as_val*) as_hashmap_iterator_next(&it);
+
+        if (el != nullptr && el->type == AS_PAIR) {
+
+            as_pair *kv = (as_pair *) el;
+
+            pack_val(as_pair_1(kv));
+            pack_val(as_pair_2(kv));
+
+        }
+
+    }
+
+
+}
+
+void gkvs::as_record_ser::pack_val(as_val* value) {
+
+    if (value == nullptr) {
+        msgpack_pack_nil(&pk_);
+        return;
+    }
+
+    as_val_t type = as_val_type(value);
+
+    switch(type) {
+
+        case AS_NIL:
+            msgpack_pack_nil(&pk_);
+            break;
+
+        case AS_INTEGER:
+            msgpack_pack_int64(&pk_, ((as_integer*) value)->value);
+            break;
+
+        case AS_DOUBLE:
+            msgpack_pack_double(&pk_, ((as_double*) value)->value);
+            break;
+
+        case AS_STRING: {
+            as_string* str = (as_string*) value;
+            size_t len = strlen(str->value);
+            msgpack_pack_str(&pk_, len);
+            msgpack_pack_str_body(&pk_, str->value, len);
+            break;
+        }
+
+        case AS_BYTES: {
+            as_bytes* bytes = (as_bytes*) value;
+            msgpack_pack_v4raw(&pk_, bytes->size);
+            msgpack_pack_v4raw_body(&pk_, bytes->value, bytes->size);
+            break;
+        }
+
+        case AS_MAP:
+            pack_map((as_map*) value);
+            break;
+
+        default: {
+            as_value_ser ser;
+            ser.set(value);
+            msgpack_pack_v4raw(&pk_, ser.size());
+            msgpack_pack_v4raw_body(&pk_, ser.data(), ser.size());
+            break;
+        }
+    }
+
+}
+
 
 void gkvs::as_record_ser::pack_value(as_bin_value* value) {
 
@@ -60,6 +143,10 @@ void gkvs::as_record_ser::pack_value(as_bin_value* value) {
         case AS_BYTES:
             msgpack_pack_v4raw(&pk_, value->bytes.size);
             msgpack_pack_v4raw_body(&pk_, value->bytes.value, value->bytes.size);
+            break;
+
+        case AS_MAP:
+            pack_map(&value->map);
             break;
 
         default: {
@@ -145,7 +232,7 @@ void gkvs::as_record_ser::print(const char* msg) {
 }
 
 
-char* gkvs::as_record_ser::to_string(msgpack_object& obj) {
+char* gkvs::as_record_ser::to_string(const msgpack_object& obj) {
 
     uint32_t len = obj.via.str.size;
 
@@ -158,8 +245,61 @@ char* gkvs::as_record_ser::to_string(msgpack_object& obj) {
 
 }
 
+as_val* gkvs::as_record_ser::to_val(const msgpack_object& val_obj) {
 
-void gkvs::as_record_ser::record_set(char* key, msgpack_object& val_obj) {
+    switch (val_obj.type) {
+
+        case MSGPACK_OBJECT_NIL:
+            return (as_val*) &as_nil;
+
+        case MSGPACK_OBJECT_BOOLEAN:
+            return as_boolean_toval(as_boolean_new(val_obj.via.boolean));
+
+        case MSGPACK_OBJECT_POSITIVE_INTEGER:
+            return as_integer_toval(as_integer_new(val_obj.via.u64));
+
+        case MSGPACK_OBJECT_NEGATIVE_INTEGER:
+            return as_integer_toval(as_integer_new(val_obj.via.i64));
+
+        case MSGPACK_OBJECT_FLOAT32:
+        case MSGPACK_OBJECT_FLOAT64:
+            return as_double_toval(as_double_new(val_obj.via.f64));
+
+        case MSGPACK_OBJECT_STR:
+            return as_string_toval(as_string_new_wlen((char*)val_obj.via.str.ptr, val_obj.via.str.size, false));
+
+        case MSGPACK_OBJECT_BIN:
+            return as_bytes_toval(as_bytes_new_wrap((uint8_t *)val_obj.via.bin.ptr, val_obj.via.bin.size, false));
+
+        case MSGPACK_OBJECT_MAP:
+            return as_map_toval(to_map(val_obj));
+
+        default:
+            return (as_val*) &as_nil;
+
+    }
+
+}
+
+as_map* gkvs::as_record_ser::to_map(const msgpack_object& val_obj) {
+
+    const msgpack_object_map &map = val_obj.via.map;
+
+    as_map* hashmap = (as_map*) as_hashmap_new(map.size);
+
+    for (uint32_t i = 0; i < map.size; ++i) {
+
+        msgpack_object& key_obj = map.ptr[i].key;
+        msgpack_object& val_obj = map.ptr[i].val;
+
+        as_map_set(hashmap, to_val(key_obj), to_val(val_obj));
+
+    }
+
+    return hashmap;
+}
+
+void gkvs::as_record_ser::record_set(char* key, const msgpack_object& val_obj) {
 
 
     switch (val_obj.type) {
@@ -191,6 +331,10 @@ void gkvs::as_record_ser::record_set(char* key, msgpack_object& val_obj) {
 
         case MSGPACK_OBJECT_BIN:
             as_record_set_raw(rec_, key, (uint8_t *) val_obj.via.bin.ptr, val_obj.via.bin.size);
+            break;
+
+        case MSGPACK_OBJECT_MAP:
+            as_record_set_map(rec_, key, to_map(val_obj));
             break;
 
         default: {

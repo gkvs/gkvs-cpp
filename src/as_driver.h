@@ -97,9 +97,17 @@ namespace gkvs {
             return str;
         }
 
-        char* to_string(msgpack_object& obj);
+        char* to_string(const msgpack_object& obj);
 
-        void record_set(char* key, msgpack_object& val_obj);
+        as_val* to_val(const msgpack_object& val_obj);
+
+        as_map* to_map(const msgpack_object& val_obj);
+
+        void record_set(char* key, const msgpack_object& val_obj);
+
+        void pack_map(as_map* map);
+
+        void pack_val(as_val* value);
 
         void pack_value(as_bin_value* value);
 
