@@ -151,7 +151,7 @@ namespace gkvs {
         as_integer n;
         as_integer_init(&n, 1);
 
-        as_value_binarer binarer;
+        as_value_ser binarer;
         binarer.set((as_val*) &n);
 
         passed &= assert_eq(binarer.size() == sizeof(uint64_t), "as_value_binarer as_integer fail 1");
@@ -178,7 +178,7 @@ namespace gkvs {
         as_double d;
         as_double_init(&d, 1.0);
 
-        as_value_binarer binarer;
+        as_value_ser binarer;
         binarer.set((as_val*) &d);
 
         passed &= assert_eq(binarer.size() == sizeof(uint64_t), "as_value_binarer as_double fail 1");
@@ -196,7 +196,7 @@ namespace gkvs {
 
         as_string* s = as_string_new((char*) "alex", false);
 
-        as_value_binarer binarer;
+        as_value_ser binarer;
         binarer.set((as_val*) s);
 
         passed &= assert_eq(binarer.size() == 4, "as_value_binarer as_string fail 1");
@@ -214,7 +214,7 @@ namespace gkvs {
 
         as_bytes* s = as_bytes_new_wrap((uint8_t *) "alex", 4, false);
 
-        as_value_binarer binarer;
+        as_value_ser binarer;
         binarer.set((as_val*) s);
 
         passed &= assert_eq(binarer.size() == 4, "as_value_binarer as_bytes fail 1");
@@ -236,7 +236,7 @@ namespace gkvs {
         as_list_append_str(l, "alex");
         as_list_append_str(l, "shvid");
 
-        as_value_binarer binarer;
+        as_value_ser binarer;
         binarer.set((as_val*) l);
 
         std::string expected = "92a53616c6578a637368766964"; // msgpack
@@ -262,7 +262,7 @@ namespace gkvs {
 
         as_map_set(m, (const as_val*)key, (const as_val*)value);
 
-        as_value_binarer binarer;
+        as_value_ser binarer;
         binarer.set((as_val*) m);
 
         std::string expected = "81a53616c6578a637368766964"; // msgpack

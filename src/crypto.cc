@@ -28,9 +28,9 @@ void gkvs::Ripend160Hash::apply(const char* pstr) {
 
 }
 
-void gkvs::Ripend160Hash::apply(const uint8_t* data, uint32_t size) {
+void gkvs::Ripend160Hash::apply(const char* data, uint32_t size) {
 
-    RIPEMD160 (data, size, _hash);
+    RIPEMD160 ((const uint8_t*) data, size, _hash);
 
 }
 

@@ -93,3 +93,24 @@ ExternalProject_Add(gkvs
         DEPENDS protobuf grpc
         )
 
+include_directories("src")
+include_directories("/usr/local/Cellar/openssl/1.0.2o_1/include")
+include_directories("modules/aerospike-client-c/modules/common/src/include")
+
+include_directories("/usr/local/include")
+
+add_executable(gkvs_ide
+        src/gkvs.grpc.pb.h
+        src/gkvs.pb.h
+        src/gkvs_client.cc
+        src/gkvs_server.cc
+        src/helper.cc
+        src/helper.h
+        src/driver.h
+        src/as_driver.cc
+        src/as_driver.h
+        src/as_driver_tests.cc
+        src/crypto.cc
+        src/crypto.h
+        src/as_helper.cc
+        src/lua_helper.h src/lua_helper.cc)

@@ -21,7 +21,7 @@
 #include <aerospike/aerospike_key.h>
 #include <aerospike/as_boolean.h>
 
-
+#include <msgpack.h>
 #include <iostream>
 
 namespace gkvs {
@@ -38,24 +38,107 @@ namespace gkvs {
 
     };
 
-    class as_value_binarer final {
+    class as_record_ser final {
 
     public:
 
-        as_value_binarer() {
+        explicit as_record_ser() {
+        }
+
+        ~as_record_ser() {
+            if (rec_free_) {
+                as_record_destroy(rec_);
+            }
+            if (sbuf_free_) {
+                msgpack_sbuffer_destroy(&sbuf_);
+            }
+            if (mempool_free_) {
+                msgpack_zone_destroy(&mempool_);
+            }
+            for (auto i = mem_.begin(); i != mem_.end(); ++i) {
+                char* str = *i;
+                delete [] str;
+            }
+        }
+
+        as_record* get() {
+            return rec_;
+        }
+
+        const char* data() {
+            if (!sbuf_free_) {
+                return nullptr;
+            }
+            return &sbuf_.data[sbuf_pos_];
+        }
+
+        size_t size() {
+            if (!sbuf_free_) {
+                return 0;
+            }
+            return sbuf_.size - sbuf_pos_;
+        }
+
+        as_record* unpack(const char* data, size_t size);
+
+        inline as_record* unpack(const std::string& mp) {
+            return unpack(mp.c_str(), mp.length());
+        }
+
+        bool pack(as_record *rec);
+
+        void print(const char* msg);
+
+    private:
+
+        char* alloc(size_t sz) {
+            char* str = new char[sz];
+            mem_.push_back(str);
+            return str;
+        }
+
+        char* to_string(msgpack_object& obj);
+
+        void record_set(char* key, msgpack_object& val_obj);
+
+        void pack_value(as_bin_value* value);
+
+        as_record* alloc_rec(size_t size);
+
+        as_record* rec_;
+        bool rec_free_ = false;
+
+        msgpack_packer pk_;
+
+        msgpack_sbuffer sbuf_;
+        bool sbuf_free_ = false;
+        size_t sbuf_pos_ = 0;
+
+        msgpack_zone mempool_;
+        bool mempool_free_ = false;
+
+        std::vector<char*> mem_;
+    };
+
+
+    class as_value_ser final {
+
+    public:
+
+        as_value_ser() {
             _buf = nullptr;
             _free = false;
         }
 
-        ~as_value_binarer() {
+        ~as_value_ser() {
             if (_free && _buf != nullptr) {
-                delete _buf;
+                delete [] _buf;
             }
         }
 
         void reset() {
             if (_free && _buf != nullptr) {
-                delete _buf;
+                delete [] _buf;
             }
             _free = false;
             _buf = nullptr;

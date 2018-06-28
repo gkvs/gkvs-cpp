@@ -20,3 +20,6 @@
 [submodule "modules/hiredis"]
 	path = modules/hiredis
 	url = https://github.com/redis/hiredis
+[submodule "modules/msgpack-c"]
+	path = modules/msgpack-c
+	url = https://github.com/msgpack/msgpack-c

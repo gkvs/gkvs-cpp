@@ -39,6 +39,9 @@
 #include <aerospike/as_query.h>
 #include <aerospike/aerospike_query.h>
 #include <aerospike/as_nil.h>
+#include <aerospike/as_hashmap.h>
+#include <aerospike/as_map_operations.h>
+#include <aerospike/as_stringmap.h>
 
 #include <glog/logging.h>
 
@@ -57,6 +60,7 @@ static gkvs::StatusCode parse_aerospike_status(as_status status);
 
 namespace gkvs {
 
+    static bool to_record_callback (const as_val * key, const as_val * value, void * udata);
 
     class StatusErr final {
 
@@ -367,8 +371,8 @@ namespace gkvs {
 
         bool valid_key(const Key &key, StatusErr& statusErr) {
 
-            if (key.tablename().empty()) {
-                statusErr.bad_request("empty table name");
+            if (key.storename().empty()) {
+                statusErr.bad_request("empty store name");
                 return false;
             }
 
@@ -398,10 +402,10 @@ namespace gkvs {
 
         bool init_key(const Key &requestKey, as_key& key, StatusErr& statusErr) {
 
-            const std::string& tableName = requestKey.tablename();
+            const std::string& storeName = requestKey.storename();
 
-            if (tableName.empty()) {
-                statusErr.bad_request("empty table name");
+            if (storeName.empty()) {
+                statusErr.bad_request("empty store name");
                 return false;
             }
 
@@ -410,7 +414,7 @@ namespace gkvs {
                 case Key::RecordKeyCase::kRaw: {
                     const uint8_t* value = (const uint8_t*) requestKey.raw().c_str();
                     uint32_t len = static_cast<uint32_t>(requestKey.raw().length());
-                    if (!as_key_init_rawp(&key, _namespace.c_str(), tableName.c_str(), value, len, false)) {
+                    if (!as_key_init_rawp(&key, _namespace.c_str(), storeName.c_str(), value, len, false)) {
                         statusErr.driver_error("as_key_init_raw fail");
                         return false;
                     }
@@ -423,7 +427,7 @@ namespace gkvs {
                         return false;
                     }
                     const uint8_t *value = (const uint8_t *) requestKey.digest().c_str();
-                    if (!as_key_init_digest(&key, _namespace.c_str(), tableName.c_str(), value)) {
+                    if (!as_key_init_digest(&key, _namespace.c_str(), storeName.c_str(), value)) {
                         statusErr.driver_error("as_key_init_digest fail");
                         return false;
                     }
@@ -534,46 +538,22 @@ namespace gkvs {
 
         }
 
-        /**
-         * TODO: implement DIGEST calc
-         */
-
         void value_result(as_record *rec, ValueResult *result, const OutputOptions &out) {
 
             bool includeValue = include_value(out);
             bool includeValueDigest = include_value_digest(out);
 
-            as_record_iterator it;
-            as_record_iterator_init(&it, rec);
+            as_record_ser ser;
 
-            while (as_record_iterator_has_next(&it)) {
+            size_t pos = ser.pack(rec);
 
-                const as_bin* bin = as_record_iterator_next(&it);
-
-                Value* recordValue = result->add_value();
-
-                std::string column(as_bin_get_name(bin));
-                recordValue->set_column(column);
-
-                as_bin_value* value = as_bin_get_value(bin);
-
-                if (value && includeValue) {
-
-                    as_value_binarer binarer;
-                    binarer.set(value);
-
-                    if (includeValueDigest) {
-                        Ripend160Hash hash;
-                        hash.apply(binarer.data(), binarer.size());
-                        recordValue->set_raw(hash.data(), hash.size());
-                    }
-                    else {
-                        recordValue->set_raw(binarer.data(), binarer.size());
-                    }
-
-                }
-
-
+            if (includeValueDigest) {
+                Ripend160Hash hash;
+                hash.apply(ser.data(), ser.size());
+                result->mutable_value()->set_raw(hash.data(), hash.size());
+            }
+            else {
+                result->mutable_value()->set_raw(ser.data(), ser.size());
             }
 
         }
@@ -585,13 +565,13 @@ namespace gkvs {
             }
 
             Key* res = result->mutable_key();
-            res->set_tablename(key->set);
+            res->set_storename(key->set);
 
             bool setup = false;
 
             if (key->valuep) {
 
-                as_value_binarer binarer;
+                as_value_ser binarer;
                 binarer.set(key->valuep);
 
                 if (binarer.has()) {
@@ -999,12 +979,12 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
 
 void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::ValueResult> *writer) {
 
-    const std::string& tableName = request->tablename();
+    const std::string& storeName = request->storename();
 
-    if (tableName.empty()) {
+    if (storeName.empty()) {
 
         ValueResult result;
-        bad_request("empty table name", result.mutable_status());
+        bad_request("empty store name", result.mutable_status());
         writer->WriteLast(result, grpc::WriteOptions());
         return;
     }
@@ -1015,7 +995,7 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc
     if (request->has_bucket()) {
 
         as_query query;
-        as_query_init(&query, _namespace.c_str(), tableName.c_str());
+        as_query_init(&query, _namespace.c_str(), storeName.c_str());
 
         if (!include_value(request->output())) {
             query.no_bins = true;
@@ -1048,7 +1028,7 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc
     else {
 
         as_scan scan;
-        as_scan_init(&scan, _namespace.c_str(), tableName.c_str());
+        as_scan_init(&scan, _namespace.c_str(), storeName.c_str());
         scan.deserialize_list_map = false;
 
         if (!include_value(request->output())) {
@@ -1207,22 +1187,19 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
         return;
     }
 
-    auto size = static_cast<uint16_t>(request->value().size());
+    const Value& val = request->value();
 
-    as_record* rec = as_record_new(size);
+    if (val.value_case() != Value::ValueCase::kRaw) {
+        bad_request("value must be raw", response->mutable_status());
+        return;
+    }
 
-    for (const Value &val : request->value()) {
+    gkvs::as_record_ser record_ser;
+    as_record* rec = record_ser.unpack(val.raw());
 
-        if (val.value_case() != Value::ValueCase::kRaw) {
-            bad_request("value must be raw", response->mutable_status());
-            return;
-        }
-
-        const uint8_t* raw = (const uint8_t*) val.raw().c_str();
-        uint32_t len = static_cast<uint32_t>(val.raw().size());
-
-        // save all bins as raw bytes
-        as_record_set_raw(rec, val.column().c_str(), raw, len);
+    if (0 == as_record_numbins(rec)) {
+        response->mutable_status()->set_code(StatusCode::SUCCESS_NOT_UPDATED);
+        return;
     }
 
     as_policy_write pol;
@@ -1264,7 +1241,7 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
         error(err, response->mutable_status());
     }
 
-    as_record_destroy(rec);
+    //as_record_destroy(rec);
 }
 
 void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkvs::StatusResult *response) {

@@ -38,14 +38,14 @@ namespace gkvs {
 
          void apply(const char* pstr);
 
-         void apply(const uint8_t *data, uint32_t size);
+         void apply(const char* data, uint32_t size);
 
          inline size_t size() {
              return _size;
          }
 
-         inline const uint8_t* data() {
-            return _hash;
+         inline const char* data() {
+            return (const char*) _hash;
          }
 
     private:
