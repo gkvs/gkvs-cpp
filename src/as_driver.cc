@@ -241,10 +241,6 @@ namespace gkvs {
 
     protected:
 
-        void init_tls() {
-
-        }
-
         void init_read_policy(const RequestOptions& op, as_policy_read* pol) {
 
             as_policy_read_init(pol);
@@ -546,7 +542,7 @@ namespace gkvs {
 
             as_record_ser ser;
 
-            size_t pos = ser.pack(rec, single_bin_);
+            size_t pos = ser.pack_record(rec, single_bin_);
 
             if (includeValueDigest) {
                 Ripend160Hash hash;
@@ -1198,7 +1194,7 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
     }
 
     gkvs::as_record_ser record_ser;
-    as_record* rec = record_ser.unpack(val.raw(), single_bin_);
+    as_record* rec = record_ser.unpack_record(val.raw(), single_bin_);
 
     if (0 == as_record_numbins(rec)) {
         response->mutable_status()->set_code(StatusCode::SUCCESS_NOT_UPDATED);

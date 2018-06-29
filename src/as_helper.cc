@@ -38,6 +38,40 @@
 
 #include "as_driver.h"
 
+/**
+void gkvs::as_record_ser::pack_val_ser(as_val* val) {
+
+    as_buffer buffer;
+    as_buffer_init(&buffer);
+    as_serializer ser;
+    as_msgpack_init(&ser);
+    as_serializer_serialize(&ser, val, &buffer);
+    as_serializer_destroy(&ser);
+
+    msgpack_pack_v4raw(&pk_, buffer.size);
+    msgpack_pack_v4raw_body(&pk_, buffer.data, buffer.size);
+
+    as_buffer_destroy(&buffer);
+}
+ **/
+
+
+void gkvs::as_record_ser::pack_list(as_list* list) {
+
+    uint32_t size = as_list_size(list);
+    msgpack_pack_array(&pk_, size);
+
+    as_arraylist_iterator it;
+    as_arraylist_iterator_init(&it, (as_arraylist*) list);
+
+    while (as_arraylist_iterator_has_next(&it)) {
+
+        as_val *val = (as_val*) as_arraylist_iterator_next(&it);
+        pack_val(val);
+
+    }
+
+}
 
 void gkvs::as_record_ser::pack_map(as_map* map) {
 
@@ -62,7 +96,6 @@ void gkvs::as_record_ser::pack_map(as_map* map) {
 
     }
 
-
 }
 
 void gkvs::as_record_ser::pack_val(as_val* value) {
@@ -78,6 +111,15 @@ void gkvs::as_record_ser::pack_val(as_val* value) {
 
         case AS_NIL:
             msgpack_pack_nil(&pk_);
+            break;
+
+        case AS_BOOLEAN:
+            if (((as_boolean*) value)->value) {
+                msgpack_pack_true(&pk_);
+            }
+            else {
+                msgpack_pack_false(&pk_);
+            }
             break;
 
         case AS_INTEGER:
@@ -103,15 +145,28 @@ void gkvs::as_record_ser::pack_val(as_val* value) {
             break;
         }
 
+        case AS_LIST:
+            pack_list((as_list*) value);
+            break;
+
         case AS_MAP:
             pack_map((as_map*) value);
             break;
 
+        case AS_GEOJSON: {
+            as_geojson* geo = (as_geojson*)  value;
+            size_t len = strlen(geo->value);
+            msgpack_pack_str(&pk_, len);
+            msgpack_pack_str_body(&pk_, geo->value, len);
+            break;
+        }
+
         default: {
-            as_value_ser ser;
-            ser.set(value);
-            msgpack_pack_v4raw(&pk_, ser.size());
-            msgpack_pack_v4raw_body(&pk_, ser.data(), ser.size());
+            char* str = as_val_tostring(value);
+            size_t len = strlen(str);
+            msgpack_pack_str(&pk_, len);
+            msgpack_pack_str_body(&pk_, str, len);
+            cf_free(str);
             break;
         }
     }
@@ -119,7 +174,7 @@ void gkvs::as_record_ser::pack_val(as_val* value) {
 }
 
 
-void gkvs::as_record_ser::pack_value(as_bin_value* value) {
+void gkvs::as_record_ser::pack_bin_value(as_bin_value *value) {
 
     as_val_t type = as_val_type(value);
 
@@ -149,15 +204,20 @@ void gkvs::as_record_ser::pack_value(as_bin_value* value) {
             msgpack_pack_v4raw_body(&pk_, value->bytes.value, value->bytes.size);
             break;
 
+        case AS_LIST:
+            pack_list(&value->list);
+            break;
+
         case AS_MAP:
             pack_map(&value->map);
             break;
 
         default: {
-            as_value_ser ser;
-            ser.set(value);
-            msgpack_pack_v4raw(&pk_, ser.size());
-            msgpack_pack_v4raw_body(&pk_, ser.data(), ser.size());
+            char *str = as_val_tostring(value);
+            size_t len = strlen(str);
+            msgpack_pack_str(&pk_, len);
+            msgpack_pack_str_body(&pk_, str, len);
+            cf_free(str);
             break;
         }
     }
@@ -165,7 +225,7 @@ void gkvs::as_record_ser::pack_value(as_bin_value* value) {
 }
 
 
-bool gkvs::as_record_ser::pack(as_record *rec, bool single_bin) {
+bool gkvs::as_record_ser::pack_record(as_record *rec, bool single_bin) {
 
     if (rec_free_) {
         as_record_destroy(rec_);
@@ -187,7 +247,7 @@ bool gkvs::as_record_ser::pack(as_record *rec, bool single_bin) {
 
         if (size >= 1) {
             as_bin_value *value = as_bin_get_value(rec_->bins.entries);
-            pack_value(value);
+            pack_bin_value(value);
         }
 
         return true;
@@ -202,7 +262,7 @@ bool gkvs::as_record_ser::pack(as_record *rec, bool single_bin) {
         if (first_len == 0) {
 
             as_bin_value *value = as_bin_get_value(rec_->bins.entries);
-            pack_value(value);
+            pack_bin_value(value);
             return true;
         }
     }
@@ -223,15 +283,49 @@ bool gkvs::as_record_ser::pack(as_record *rec, bool single_bin) {
         msgpack_pack_str_body(&pk_, key, key_len);
 
         as_bin_value* value = as_bin_get_value(bin);
-
-        pack_value(value);
+        pack_bin_value(value);
 
     }
 
     return true;
 }
 
-as_val* gkvs::as_record_ser::to_val(const msgpack_object& val_obj) {
+as_list* gkvs::as_record_ser::unpack_list(const msgpack_object &val_obj) {
+
+    const msgpack_object_array &array = val_obj.via.array;
+
+    as_list* list = (as_list*) as_arraylist_new(array.size, array.size);
+
+    for (uint32_t i = 0; i < array.size; ++i) {
+
+        msgpack_object& val_obj = array.ptr[i];
+
+        as_list_append(list, unpack_val(val_obj));
+
+    }
+
+    return list;
+}
+
+as_map* gkvs::as_record_ser::unpack_map(const msgpack_object &val_obj) {
+
+    const msgpack_object_map &map = val_obj.via.map;
+
+    as_map* hashmap = (as_map*) as_hashmap_new(map.size);
+
+    for (uint32_t i = 0; i < map.size; ++i) {
+
+        msgpack_object& key_obj = map.ptr[i].key;
+        msgpack_object& val_obj = map.ptr[i].val;
+
+        as_map_set(hashmap, unpack_val(key_obj), unpack_val(val_obj));
+
+    }
+
+    return hashmap;
+}
+
+as_val* gkvs::as_record_ser::unpack_val(const msgpack_object &val_obj) {
 
     switch (val_obj.type) {
 
@@ -253,6 +347,9 @@ as_val* gkvs::as_record_ser::to_val(const msgpack_object& val_obj) {
 
         case MSGPACK_OBJECT_STR: {
             /**
+             *
+             * DO NOT ALLOCATE IN HEAP
+             *
             int len = val_obj.via.str.size;
             char* buf = (char*) cf_malloc(len+1);
             memcpy(buf, val_obj.via.str.ptr, len);
@@ -264,6 +361,9 @@ as_val* gkvs::as_record_ser::to_val(const msgpack_object& val_obj) {
 
         case MSGPACK_OBJECT_BIN: {
             /**
+             *
+             * DO NOT ALLOCATE IN HEAP
+             *
             int len = val_obj.via.bin.size;
             uint8_t* buf = (uint8_t*) cf_malloc(len);
             memcpy(buf, val_obj.via.bin.ptr, len);
@@ -272,32 +372,17 @@ as_val* gkvs::as_record_ser::to_val(const msgpack_object& val_obj) {
             return as_bytes_toval(as_bytes_new_wrap((uint8_t *)val_obj.via.bin.ptr, val_obj.via.bin.size, false));
         }
 
+        case MSGPACK_OBJECT_ARRAY:
+            return as_list_toval(unpack_list(val_obj));
+
         case MSGPACK_OBJECT_MAP:
-            return as_map_toval(to_map(val_obj));
+            return as_map_toval(unpack_map(val_obj));
 
         default:
             return (as_val*) &as_nil;
 
     }
 
-}
-
-as_map* gkvs::as_record_ser::to_map(const msgpack_object& val_obj) {
-
-    const msgpack_object_map &map = val_obj.via.map;
-
-    as_map* hashmap = (as_map*) as_hashmap_new(map.size);
-
-    for (uint32_t i = 0; i < map.size; ++i) {
-
-        msgpack_object& key_obj = map.ptr[i].key;
-        msgpack_object& val_obj = map.ptr[i].val;
-
-        as_map_set(hashmap, to_val(key_obj), to_val(val_obj));
-
-    }
-
-    return hashmap;
 }
 
 void gkvs::as_record_ser::record_set(const char* key, const msgpack_object& val_obj) {
@@ -336,18 +421,27 @@ void gkvs::as_record_ser::record_set(const char* key, const msgpack_object& val_
         }
 
         case MSGPACK_OBJECT_BIN: {
-            //int len = val_obj.via.bin.size;
-            //uint8_t* buf = (uint8_t*) cf_malloc(len);
-            //memcpy(buf, val_obj.via.bin.ptr, len);
-            //as_record_set_rawp(rec_, key, buf, len, true);
+            /**
+             *
+             * DO NOT ALLOCATE IN HEAP
+             *
+            int len = val_obj.via.bin.size;
+            uint8_t* buf = (uint8_t*) cf_malloc(len);
+            memcpy(buf, val_obj.via.bin.ptr, len);
+            as_record_set_rawp(rec_, key, buf, len, true);
+             **/
 
             // msgpack val_obj reference on unpacker buffer
             as_record_set_raw(rec_, key, (uint8_t*) val_obj.via.bin.ptr, val_obj.via.bin.size);
             break;
         }
 
+        case MSGPACK_OBJECT_ARRAY:
+            as_record_set_list(rec_, key, unpack_list(val_obj));
+            break;
+
         case MSGPACK_OBJECT_MAP:
-            as_record_set_map(rec_, key, to_map(val_obj));
+            as_record_set_map(rec_, key, unpack_map(val_obj));
             break;
 
         default: {
@@ -409,7 +503,7 @@ void gkvs::as_record_ser::stringify(msgpack_object& obj, char* buf, uint32_t siz
 }
 
 
-as_record* gkvs::as_record_ser::unpack(const char* data, size_t size, bool single_bin) {
+as_record* gkvs::as_record_ser::unpack_record(const char* data, size_t size, bool single_bin) {
 
     if (!mempool_free_) {
         msgpack_zone_init(&mempool_, 2048);

@@ -75,29 +75,33 @@ namespace gkvs {
             return sbuf_.size - sbuf_pos_;
         }
 
-        as_record* unpack(const char* data, size_t size, bool single_bin);
+        as_record* unpack_record(const char* data, size_t size, bool single_bin);
 
-        inline as_record* unpack(const std::string& mp, bool single_bin) {
-            return unpack(mp.c_str(), mp.length(), single_bin);
+        inline as_record* unpack_record(const std::string& mp, bool single_bin) {
+            return unpack_record(mp.c_str(), mp.length(), single_bin);
         }
 
-        bool pack(as_record *rec, bool single_bin);
+        bool pack_record(as_record *rec, bool single_bin);
 
     private:
 
-        as_val* to_val(const msgpack_object& val_obj);
+        as_list* unpack_list(const msgpack_object &val_obj);
 
-        as_map* to_map(const msgpack_object& val_obj);
+        as_map* unpack_map(const msgpack_object &val_obj);
+
+        as_val* unpack_val(const msgpack_object &val_obj);
 
         void stringify(msgpack_object& obj, char* buf, uint32_t size);
 
         void record_set(const char* key, const msgpack_object& val_obj);
 
+        void pack_list(as_list* list);
+
         void pack_map(as_map* map);
 
         void pack_val(as_val* value);
 
-        void pack_value(as_bin_value* value);
+        void pack_bin_value(as_bin_value *value);
 
         as_record* alloc_rec(size_t size);
 
