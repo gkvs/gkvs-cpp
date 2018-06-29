@@ -55,10 +55,6 @@ namespace gkvs {
             if (mempool_free_) {
                 msgpack_zone_destroy(&mempool_);
             }
-            for (auto i = mem_.begin(); i != mem_.end(); ++i) {
-                char* str = *i;
-                delete [] str;
-            }
         }
 
         as_record* get() {
@@ -79,31 +75,23 @@ namespace gkvs {
             return sbuf_.size - sbuf_pos_;
         }
 
-        as_record* unpack(const char* data, size_t size);
+        as_record* unpack(const char* data, size_t size, bool single_bin);
 
-        inline as_record* unpack(const std::string& mp) {
-            return unpack(mp.c_str(), mp.length());
+        inline as_record* unpack(const std::string& mp, bool single_bin) {
+            return unpack(mp.c_str(), mp.length(), single_bin);
         }
 
-        bool pack(as_record *rec);
-
-        void print(const char* msg);
+        bool pack(as_record *rec, bool single_bin);
 
     private:
-
-        char* alloc(size_t sz) {
-            char* str = new char[sz];
-            mem_.push_back(str);
-            return str;
-        }
-
-        char* to_string(const msgpack_object& obj);
 
         as_val* to_val(const msgpack_object& val_obj);
 
         as_map* to_map(const msgpack_object& val_obj);
 
-        void record_set(char* key, const msgpack_object& val_obj);
+        void stringify(msgpack_object& obj, char* buf, uint32_t size);
+
+        void record_set(const char* key, const msgpack_object& val_obj);
 
         void pack_map(as_map* map);
 
@@ -125,7 +113,6 @@ namespace gkvs {
         msgpack_zone mempool_;
         bool mempool_free_ = false;
 
-        std::vector<char*> mem_;
     };
 
 

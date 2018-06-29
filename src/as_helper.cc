@@ -26,10 +26,14 @@
 #include <aerospike/as_map_iterator.h>
 #include <aerospike/as_hashmap_iterator.h>
 
-#include <msgpack.h>
-#include <msgpack.hpp>
 #include <unordered_map>
 #include <sstream>
+#include <algorithm>
+
+#include <stdlib.h>
+
+#include <msgpack.h>
+#include <msgpack.hpp>
 #include <msgpack/object.h>
 
 #include "as_driver.h"
@@ -161,7 +165,7 @@ void gkvs::as_record_ser::pack_value(as_bin_value* value) {
 }
 
 
-bool gkvs::as_record_ser::pack(as_record *rec) {
+bool gkvs::as_record_ser::pack(as_record *rec, bool single_bin) {
 
     if (rec_free_) {
         as_record_destroy(rec_);
@@ -178,6 +182,17 @@ bool gkvs::as_record_ser::pack(as_record *rec) {
     sbuf_pos_ = sbuf_.size;
 
     uint16_t size = as_record_numbins(rec_);
+
+    if (single_bin) {
+
+        if (size >= 1) {
+            as_bin_value *value = as_bin_get_value(rec_->bins.entries);
+            pack_value(value);
+        }
+
+        return true;
+
+    }
 
     if (size == 1) {
 
@@ -216,35 +231,6 @@ bool gkvs::as_record_ser::pack(as_record *rec) {
     return true;
 }
 
-void gkvs::as_record_ser::print(const char* msg) {
-
-    if (!sbuf_free_) {
-        std::cout << msg << "empty" << std::endl;
-        return;
-    }
-
-    msgpack::object_handle oh = msgpack::unpack((char*)data(), size());
-
-    msgpack::object obj = oh.get();
-
-    std::cout << msg << obj << std::endl;
-
-}
-
-
-char* gkvs::as_record_ser::to_string(const msgpack_object& obj) {
-
-    uint32_t len = obj.via.str.size;
-
-    char* str = alloc(len+1);
-
-    memcpy(str, obj.via.str.ptr, len);
-    str[len] = 0;
-
-    return str;
-
-}
-
 as_val* gkvs::as_record_ser::to_val(const msgpack_object& val_obj) {
 
     switch (val_obj.type) {
@@ -265,11 +251,26 @@ as_val* gkvs::as_record_ser::to_val(const msgpack_object& val_obj) {
         case MSGPACK_OBJECT_FLOAT64:
             return as_double_toval(as_double_new(val_obj.via.f64));
 
-        case MSGPACK_OBJECT_STR:
+        case MSGPACK_OBJECT_STR: {
+            /**
+            int len = val_obj.via.str.size;
+            char* buf = (char*) cf_malloc(len+1);
+            memcpy(buf, val_obj.via.str.ptr, len);
+            buf[len] = 0;
+            return as_string_toval(as_string_new(buf, true));
+             **/
             return as_string_toval(as_string_new_wlen((char*)val_obj.via.str.ptr, val_obj.via.str.size, false));
+        }
 
-        case MSGPACK_OBJECT_BIN:
+        case MSGPACK_OBJECT_BIN: {
+            /**
+            int len = val_obj.via.bin.size;
+            uint8_t* buf = (uint8_t*) cf_malloc(len);
+            memcpy(buf, val_obj.via.bin.ptr, len);
+            return as_bytes_toval(as_bytes_new_wrap(buf, len, true));
+             **/
             return as_bytes_toval(as_bytes_new_wrap((uint8_t *)val_obj.via.bin.ptr, val_obj.via.bin.size, false));
+        }
 
         case MSGPACK_OBJECT_MAP:
             return as_map_toval(to_map(val_obj));
@@ -299,7 +300,7 @@ as_map* gkvs::as_record_ser::to_map(const msgpack_object& val_obj) {
     return hashmap;
 }
 
-void gkvs::as_record_ser::record_set(char* key, const msgpack_object& val_obj) {
+void gkvs::as_record_ser::record_set(const char* key, const msgpack_object& val_obj) {
 
 
     switch (val_obj.type) {
@@ -325,13 +326,25 @@ void gkvs::as_record_ser::record_set(char* key, const msgpack_object& val_obj) {
             as_record_set_double(rec_, key, val_obj.via.f64);
             break;
 
-        case MSGPACK_OBJECT_STR:
-            as_record_set_str(rec_, key, to_string(val_obj));
+        case MSGPACK_OBJECT_STR: {
+            int len = val_obj.via.str.size;
+            char* buf = (char*) cf_malloc(len+1);
+            memcpy(buf, val_obj.via.str.ptr, len);
+            buf[len] = 0;
+            as_record_set_strp(rec_, key, buf, true);
             break;
+        }
 
-        case MSGPACK_OBJECT_BIN:
-            as_record_set_raw(rec_, key, (uint8_t *) val_obj.via.bin.ptr, val_obj.via.bin.size);
+        case MSGPACK_OBJECT_BIN: {
+            //int len = val_obj.via.bin.size;
+            //uint8_t* buf = (uint8_t*) cf_malloc(len);
+            //memcpy(buf, val_obj.via.bin.ptr, len);
+            //as_record_set_rawp(rec_, key, buf, len, true);
+
+            // msgpack val_obj reference on unpacker buffer
+            as_record_set_raw(rec_, key, (uint8_t*) val_obj.via.bin.ptr, val_obj.via.bin.size);
             break;
+        }
 
         case MSGPACK_OBJECT_MAP:
             as_record_set_map(rec_, key, to_map(val_obj));
@@ -368,7 +381,35 @@ as_record* gkvs::as_record_ser::alloc_rec(size_t size) {
     return rec_;
 }
 
-as_record* gkvs::as_record_ser::unpack(const char* data, size_t size) {
+void gkvs::as_record_ser::stringify(msgpack_object& obj, char* buf, uint32_t size) {
+
+    switch(obj.type) {
+
+        case MSGPACK_OBJECT_STR: {
+            size_t len = std::min(size - 1, obj.via.str.size);
+            memcpy(buf, obj.via.str.ptr, len);
+            buf[len] = 0;
+            break;
+        }
+
+        case MSGPACK_OBJECT_POSITIVE_INTEGER:
+            snprintf(buf, size, "%llu", obj.via.u64);
+            break;
+
+        case MSGPACK_OBJECT_NEGATIVE_INTEGER:
+            snprintf(buf, size, "%lld", obj.via.i64);
+            break;
+
+        default:
+            msgpack_object_print_buffer(buf, size, obj);
+            break;
+
+    }
+
+}
+
+
+as_record* gkvs::as_record_ser::unpack(const char* data, size_t size, bool single_bin) {
 
     if (!mempool_free_) {
         msgpack_zone_init(&mempool_, 2048);
@@ -380,7 +421,7 @@ as_record* gkvs::as_record_ser::unpack(const char* data, size_t size) {
 
     //msgpack_object_print(stdout, deserialized);
 
-    if (deserialized.type != MSGPACK_OBJECT_MAP) {
+    if (single_bin || deserialized.type != MSGPACK_OBJECT_MAP) {
         // use default column "" and single value
 
         alloc_rec(1);
@@ -398,7 +439,10 @@ as_record* gkvs::as_record_ser::unpack(const char* data, size_t size) {
         msgpack_object& key_obj = map.ptr[i].key;
         msgpack_object& val_obj = map.ptr[i].val;
 
-        record_set(to_string(key_obj), val_obj);
+        char bin[AS_BIN_NAME_MAX_SIZE];
+        stringify(key_obj, bin, sizeof(bin));
+
+        record_set(bin, val_obj);
 
     }
 
