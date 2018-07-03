@@ -12,6 +12,27 @@ set(CMAKE_CXX_STANDARD 11)
 # setup ENV in your bash
 set(OPENSSL_ROOT_DIR /usr/local/Cellar/openssl/1.0.2o_1)
 
+# Builds msgpack-c project from the git submodule
+ExternalProject_Add(msgpack
+        PREFIX msgpack
+        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modules/msgpack-c"
+        CMAKE_CACHE_ARGS
+        -DMSGPACK_CXX11:BOOL=ON
+        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/msgpack
+        )
+
+# Builds rocksdb project from the git submodule
+ExternalProject_Add(rocksdb
+        PREFIX rocksdb
+        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/modules/rocksdb"
+        CMAKE_CACHE_ARGS
+        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/rocksdb
+        )
+#set(rocksdb_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/rocksdb/include")
+#set(rocksdb_LIBRARIES "${CMAKE_CURRENT_BINARY_DIR}/rocksdb/lib")
+set(rocksdb_DIR "${CMAKE_CURRENT_BINARY_DIR}/rocksdb/lib/cmake/rocksdb")
+set(_FINDPACKAGE_ROCKSDB_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/rocksdb/lib/cmake/rocksdb")
+
 # Builds c-ares project from the git submodule
 ExternalProject_Add(c-ares
         PREFIX c-ares
@@ -90,27 +111,29 @@ ExternalProject_Add(gkvs
         -DZLIB_ROOT:STRING=${CMAKE_CURRENT_BINARY_DIR}/zlib
         ${_CMAKE_ARGS_OPENSSL_ROOT_DIR}
         -DgRPC_DIR:PATH=${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/cmake/grpc
-        DEPENDS protobuf grpc
+        DEPENDS protobuf grpc msgpack rocksdb
         )
 
-include_directories("src")
-include_directories("/usr/local/Cellar/openssl/1.0.2o_1/include")
-include_directories("modules/aerospike-client-c/modules/common/src/include")
+#include(src)
 
-include_directories("/usr/local/include")
+#include_directories("src")
+#include_directories("/usr/local/Cellar/openssl/1.0.2o_1/include")
+#include_directories("modules/aerospike-client-c/modules/common/src/include")
 
-add_executable(gkvs_ide
-        src/gkvs.grpc.pb.h
-        src/gkvs.pb.h
-        src/gkvs_client.cc
-        src/gkvs_server.cc
-        src/helper.cc
-        src/helper.h
-        src/driver.h
-        src/as_driver.cc
-        src/as_driver.h
-        src/as_driver_tests.cc
-        src/crypto.cc
-        src/crypto.h
-        src/as_helper.cc
-        src/lua_helper.h src/lua_helper.cc src/redis_driver.h)
+#include_directories("/usr/local/include")
+
+#add_executable(gkvs_ide
+#        src/gkvs.grpc.pb.h
+#        src/gkvs.pb.h
+#        src/gkvs_client.cc
+#        src/gkvs_server.cc
+#        src/helper.cc
+#        src/helper.h
+#        src/driver.h
+#        src/as_driver.cc
+#        src/as_driver.h
+#        src/as_driver_tests.cc
+#        src/crypto.cc
+#        src/crypto.h
+#        src/as_helper.cc
+#        src/lua_helper.h src/lua_helper.cc src/redis_driver.h)

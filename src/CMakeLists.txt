@@ -6,6 +6,21 @@ set(CMAKE_CXX_STANDARD 11)
 
 message(STATUS "Running on ${CMAKE_SYSTEM_NAME}")
 
+# Msgpack
+
+find_package(msgpack CONFIG REQUIRED)
+message(STATUS "Using msgpack ${msgpack_VERSION}")
+
+# RocksDB
+
+if(NOT rocksdb_DIR)
+    set(rocksdb_DIR "${CMAKE_CURRENT_BINARY_DIR}/../rocksdb/lib/cmake/rocksdb")
+endif()
+
+message(STATUS "Using rocksdb_DIR ${rocksdb_DIR}")
+find_package(rocksdb CONFIG REQUIRED)
+message(STATUS "Using rocksdb ${rocksdb_VERSION}")
+
 # REDIS
 
 include_directories("../modules/hiredis")
@@ -120,6 +135,8 @@ target_link_libraries(gkvs
         ${_GRPC_GRPCPP}
         ${_PROTOBUF_LIBPROTOBUF}
         glog
+        msgpackc
+        rocksdb
         ${_REDIS_LIB}
         ${_AS_LIB}
         ${LIB_LIST}
