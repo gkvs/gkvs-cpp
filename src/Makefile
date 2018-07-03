@@ -24,7 +24,6 @@ C = gcc
 CXX = g++
 CPPFLAGS += `pkg-config --cflags protobuf grpc openssl`
 CPPFLAGS += -I../modules/nlohmann_json/single_include
-#CPPFLAGS += -I../modules/aerospike-common/src/include
 CXXFLAGS += -std=c++11 -O3
 LUA_UNK_FLAG=-Wl,-E
 LUA_ALL_FLAGS=$(shell pkg-config --libs luajit --static)
@@ -40,7 +39,7 @@ LDFLAGS += -L/usr/local/lib `pkg-config --libs protobuf grpc++ libglog gflags op
            -ldl
 AS_TARGET=Linux-x86_64
 endif
-CPPFLAGS += -I../modules/aerospike-client-c/target/$(AS_TARGET)/include -I../modules/aerospike-client-c/modules/common/src/include
+CPPFLAGS += -I../modules/aerospike-client-c/target/$(SYSTEM)-x86_64/include -I../modules/aerospike-client-c/modules/common/src/include
 PROTOC = protoc
 GRPC_CPP_PLUGIN = grpc_cpp_plugin
 GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
@@ -51,12 +50,12 @@ PROTOS_PATH = ../protos
 
 vpath %.proto $(PROTOS_PATH)
 
-all: system-check $(PROJECT)_client $(PROJECT)_server
+all: system-check $(PROJECT)-cli $(PROJECT)
 
-$(PROJECT)_client: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_client.o helper.o
+$(PROJECT)-cli: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_client.o helper.o
 	$(CXX) $^ $(LDFLAGS) -o $@
 
-$(PROJECT)_server: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o as_helper.o as_driver_tests.o crypto.o
+$(PROJECT): $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o as_helper.o as_driver_tests.o redis_driver.o crypto.o
 	$(CXX) $^ $(LDFLAGS) $(AEROFLAGS) $(LUA_FLAGS) -o $@
 
 #crypto.o: crypto.cc
@@ -69,7 +68,7 @@ $(PROJECT)_server: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o help
 	$(PROTOC) -I $(PROTOS_PATH) --cpp_out=. $<
 
 clean:
-	rm -f *.o *.pb.cc *.pb.h $(PROJECT)_client $(PROJECT)_server
+	rm -f *.o *.pb.cc *.pb.h $(PROJECT)-cli $(PROJECT)
 
 
 # The following is to test your system and ensure a smoother experience.
@@ -127,4 +126,4 @@ endif
 
 
 show:
-	otool -L gkvs_server
+	otool -L gkvs

@@ -113,4 +113,4 @@ add_executable(gkvs_ide
         src/crypto.cc
         src/crypto.h
         src/as_helper.cc
-        src/lua_helper.h src/lua_helper.cc)
+        src/lua_helper.h src/lua_helper.cc src/redis_driver.h)

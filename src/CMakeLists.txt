@@ -92,12 +92,12 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 # Build client
 
-add_executable(gkvs_client
+add_executable(gkvs-cli
         "gkvs_client.cc"
         ${gkvs_proto_srcs}
         ${gkvs_grpc_srcs})
 
-target_link_libraries(gkvs_client
+target_link_libraries(gkvs-cli
         ${_GRPC_GRPCPP}
         ${_PROTOBUF_LIBPROTOBUF}
         glog
@@ -105,17 +105,18 @@ target_link_libraries(gkvs_client
 
 # Build server
 
-add_executable(gkvs_server
+add_executable(gkvs
         "gkvs_server.cc"
         "helper.cc"
         "as_driver.cc"
         "as_driver_tests.cc"
         "as_helper.cc"
+        "redis_driver.cc"
         "crypto.cc"
         ${gkvs_proto_srcs}
         ${gkvs_grpc_srcs})
 
-target_link_libraries(gkvs_server
+target_link_libraries(gkvs
         ${_GRPC_GRPCPP}
         ${_PROTOBUF_LIBPROTOBUF}
         glog

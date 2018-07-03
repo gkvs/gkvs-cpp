@@ -62,36 +62,6 @@ namespace gkvs {
 
     static bool to_record_callback (const as_val * key, const as_val * value, void * udata);
 
-    class StatusErr final {
-
-    public:
-
-        void bad_request(const char* errorMessage) {
-            _statusCode = StatusCode::ERROR_INTERNAL;
-            _errorCode = AEROSPIKE_ERR;
-            _errorMessage = errorMessage;
-        }
-
-        void driver_error(const char* errorMessage) {
-            _statusCode = StatusCode::ERROR_DRIVER;
-            _errorCode = AEROSPIKE_ERR;
-            _errorMessage = errorMessage;
-        }
-
-        void to_status(Status* status) {
-            status->set_code(_statusCode);
-            status->set_errorcode(_errorCode);
-            status->set_errormessage(_errorMessage);
-        }
-
-    private:
-
-        StatusCode _statusCode = StatusCode::ERROR_INTERNAL;
-        int _errorCode = AEROSPIKE_ERR;
-        const char* _errorMessage = "";
-
-    };
-
 
     class AerospikeDriver final : public Driver {
 
@@ -332,28 +302,6 @@ namespace gkvs {
 
         }
 
-        void success(Status *status) {
-            status->set_code(StatusCode::SUCCESS);
-        }
-
-        void bad_request(const char* errorMessage, Status *status) {
-            status->set_code(StatusCode::ERROR_BAD_REQUEST);
-            status->set_errorcode(StatusCode::ERROR_BAD_REQUEST);
-            status->set_errormessage(errorMessage);
-        }
-
-        void unsupported(const char* errorMessage, Status *status) {
-            status->set_code(StatusCode::ERROR_UNSUPPORTED);
-            status->set_errorcode(StatusCode::ERROR_UNSUPPORTED);
-            status->set_errormessage(errorMessage);
-        }
-
-        void driver_error(const char* errorMessage, Status *status) {
-            status->set_code(StatusCode::ERROR_DRIVER);
-            status->set_errorcode(AEROSPIKE_ERR);
-            status->set_errormessage(errorMessage);
-        }
-
         void error(as_error &err, Status* status) {
             std::string errorMessage = err.message;
             status->set_code(parse_aerospike_status(err.code));
@@ -366,43 +314,12 @@ namespace gkvs {
             status->set_errorcode(code);
         }
 
-        bool valid_key(const Key &key, StatusErr& statusErr) {
-
-            if (key.storename().empty()) {
-                statusErr.bad_request("empty store name");
-                return false;
-            }
-
-            switch(key.recordKey_case()) {
-
-                case Key::RecordKeyCase::kRaw:
-                    if (key.raw().empty()) {
-                        statusErr.bad_request("empty record key raw");
-                        return false;
-                    }
-                    break;
-
-                case Key::RecordKeyCase::kDigest:
-                    if (key.digest().empty()) {
-                        statusErr.bad_request("empty record key digest");
-                        return false;
-                    }
-                    break;
-
-                default:
-                    statusErr.bad_request("invalid record key type");
-                    return false;
-            }
-
-            return true;
-        }
-
         bool init_key(const Key &requestKey, as_key& key, StatusErr& statusErr) {
 
-            const std::string& storeName = requestKey.storename();
+            const std::string& tableName = requestKey.tablename();
 
-            if (storeName.empty()) {
-                statusErr.bad_request("empty store name");
+            if (tableName.empty()) {
+                statusErr.bad_request("empty table name");
                 return false;
             }
 
@@ -411,7 +328,7 @@ namespace gkvs {
                 case Key::RecordKeyCase::kRaw: {
                     const uint8_t* value = (const uint8_t*) requestKey.raw().c_str();
                     uint32_t len = static_cast<uint32_t>(requestKey.raw().length());
-                    if (!as_key_init_rawp(&key, namespace_.c_str(), storeName.c_str(), value, len, false)) {
+                    if (!as_key_init_rawp(&key, namespace_.c_str(), tableName.c_str(), value, len, false)) {
                         statusErr.driver_error("as_key_init_raw fail");
                         return false;
                     }
@@ -424,7 +341,7 @@ namespace gkvs {
                         return false;
                     }
                     const uint8_t *value = (const uint8_t *) requestKey.digest().c_str();
-                    if (!as_key_init_digest(&key, namespace_.c_str(), storeName.c_str(), value)) {
+                    if (!as_key_init_digest(&key, namespace_.c_str(), tableName.c_str(), value)) {
                         statusErr.driver_error("as_key_init_digest fail");
                         return false;
                     }
@@ -562,7 +479,7 @@ namespace gkvs {
             }
 
             Key* res = result->mutable_key();
-            res->set_storename(key->set);
+            res->set_tablename(key->set);
 
             bool setup = false;
 
@@ -702,7 +619,7 @@ static gkvs::StatusCode parse_aerospike_status(as_status status) {
 
         case AEROSPIKE_NO_MORE_RECORDS:
         case AEROSPIKE_QUERY_END:
-            return gkvs::StatusCode::SUCCESS_END_STREAM;
+            return gkvs::StatusCode::ERROR_INTERNAL;
 
         case AEROSPIKE_ERR_RECORD_GENERATION:
             return gkvs::StatusCode::SUCCESS_NOT_UPDATED;
@@ -975,7 +892,7 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
 
 void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::ValueResult> *writer) {
 
-    const std::string& storeName = request->storename();
+    const std::string& storeName = request->tablename();
 
     if (storeName.empty()) {
 
@@ -1197,7 +1114,7 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
     as_record* rec = record_ser.unpack_record(val.raw(), single_bin_);
 
     if (0 == as_record_numbins(rec)) {
-        response->mutable_status()->set_code(StatusCode::SUCCESS_NOT_UPDATED);
+        success_not_updated(response->mutable_status());
         return;
     }
 
@@ -1307,7 +1224,7 @@ void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkv
 
         // this is not an error
 
-        response->mutable_status()->set_code(StatusCode::SUCCESS_NOT_UPDATED);
+        success_not_updated(response->mutable_status());
     }
     else {
         error(err, response->mutable_status());
