@@ -19,6 +19,8 @@
 #include "driver.h"
 #include "redis_driver.h"
 
+#include <hiredis/hiredis.h>
+
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
@@ -34,10 +36,28 @@ namespace gkvs {
 
             json conf = nlohmann::json::parse(conf_str.begin(), conf_str.end());
 
+            const char *hostname = conf["host"].get<std::string>().c_str();
+            int port = conf["port"].get<int>();
+
+            context_ = redisConnectNonBlock(hostname, port);
+
+            if (context_ == nullptr || context_->err) {
+                if (context_) {
+                    std::cout << "Connection error: " << context_->errstr << std::endl;
+                    redisFree(context_);
+                    throw std::runtime_error("connection error");
+                } else {
+                    std::cout << "Connection error: can't allocate redis context" << std::endl;
+                }
+            }
+
+            redisEnableKeepAlive(context_);
 
         }
 
         ~RedisDriver() override {
+
+            redisFree(context_);
 
             std::cout << "Graceful shutdown redis connection" << std::endl;
 
@@ -77,6 +97,8 @@ namespace gkvs {
 
     private:
 
+        redisContext *context_;
+
 
 
     protected:
@@ -91,6 +113,11 @@ namespace gkvs {
 
         void do_remove(const KeyOperation *request, StatusResult *response);
 
+        void error(redisReply *reply, Status *status) {
+            status->set_code(StatusCode::ERROR_DRIVER);
+            status->set_errorcode(reply->type);
+            status->set_errormessage(reply->str);
+        }
 
     };
 
@@ -115,28 +142,140 @@ void gkvs::RedisDriver::do_scan(const ScanOperation *request, ::grpc::ServerWrit
 
 void gkvs::RedisDriver::do_get(const KeyOperation *request, ValueResult *response) {
 
-    success(response->mutable_status());
+    response->set_requestid(request->options().requestid());
+
+    if (!request->has_key()) {
+        bad_request("no key", response->mutable_status());
+        return;
+    }
+
+    if (request->key().recordKey_case() != Key::RecordKeyCase::kRaw) {
+        bad_request("key must be raw", response->mutable_status());
+        return;
+    }
+
+    const std::string& key = request->key().raw();
+
+    redisReply *reply = nullptr;
+
+    reply = (redisReply *) redisCommand(context_, "GET %b", key.c_str(), key.size());
+
+    if (!reply) {
+        driver_error("redis error", response->mutable_status());
+        return;
+    }
+
+    if (reply->type == REDIS_REPLY_ERROR) {
+        error(reply, response->mutable_status());
+    }
+    else {
+        success(response->mutable_status());
+    }
+
+    freeReplyObject(reply);
 
 }
 
 void gkvs::RedisDriver::do_put(const PutOperation *request, StatusResult *response) {
 
-    /**
-    redisReply *reply = 0;
+    response->set_requestid(request->options().requestid());
 
-// set value
-    reply = redisCommand(context, "SET %b %b", key, (size_t) strlen(key), &t, (size_t) vsize);
-    if (!reply)
-        return REDIS_ERR;
+    if (!request->has_key()) {
+        bad_request("no key", response->mutable_status());
+        return;
+    }
+
+    if (request->key().recordKey_case() != Key::RecordKeyCase::kRaw) {
+        bad_request("key must be raw", response->mutable_status());
+        return;
+    }
+
+    const std::string& key = request->key().raw();
+
+    if (!request->has_value()) {
+        bad_request("no value", response->mutable_status());
+        return;
+    }
+
+    if (request->value().value_case() != Value::ValueCase::kRaw) {
+        bad_request("value must be raw", response->mutable_status());
+        return;
+    }
+
+    const std::string& value = request->value().raw();
+
+    redisReply *reply = nullptr;
+
+    reply = (redisReply *) redisCommand(context_, "SET %b %b", key.c_str(), key.size(), value.c_str(), value.size());
+
+    if (!reply) {
+        driver_error("redis error", response->mutable_status());
+        return;
+    }
+
+    if (reply->type == REDIS_REPLY_ERROR) {
+        error(reply, response->mutable_status());
+    }
+    else {
+
+        switch(reply->type) {
+
+            case REDIS_REPLY_NIL:
+                break;
+
+            case REDIS_REPLY_STRING:
+                break;
+
+            case REDIS_REPLY_INTEGER:
+                break;
+
+            case REDIS_REPLY_ARRAY:
+                break;
+
+            case REDIS_REPLY_STATUS:
+                break;
+
+        }
+
+        success(response->mutable_status());
+    }
+
     freeReplyObject(reply);
-
-     **/
-    success(response->mutable_status());
 
 }
 
 void gkvs::RedisDriver::do_remove(const KeyOperation *request, StatusResult *response) {
 
-    success(response->mutable_status());
+    response->set_requestid(request->options().requestid());
+
+    if (!request->has_key()) {
+        bad_request("no key", response->mutable_status());
+        return;
+    }
+
+    if (request->key().recordKey_case() != Key::RecordKeyCase::kRaw) {
+        bad_request("key must be raw", response->mutable_status());
+        return;
+    }
+
+    const std::string& key = request->key().raw();
+
+    redisReply *reply = nullptr;
+
+    reply = (redisReply *) redisCommand(context_, "DEL %b", key.c_str(), key.size());
+
+    if (!reply) {
+        driver_error("redis error", response->mutable_status());
+        return;
+    }
+
+    if (reply->type == REDIS_REPLY_ERROR) {
+        error(reply, response->mutable_status());
+    }
+    else {
+        success(response->mutable_status());
+    }
+
+    freeReplyObject(reply);
 
 }
