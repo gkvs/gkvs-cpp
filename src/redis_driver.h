@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include <hiredis/hiredis.h>
+
 namespace gkvs {
 
 

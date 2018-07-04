@@ -140,6 +140,50 @@ namespace gkvs {
 
     };
 
+    bool include_value(const OutputOptions &out) {
+
+        switch(out) {
+            case VALUE_RAW:
+            case VALUE_DIGEST:
+            case KEY_VALUE_RAW:
+            case KEY_VALUE_DIGEST:
+                return true;
+            default:
+                break;
+        }
+
+        return false;
+    }
+
+    bool include_value_digest(const OutputOptions &out) {
+
+        switch(out) {
+            case VALUE_DIGEST:
+            case KEY_VALUE_DIGEST:
+                return true;
+            default:
+                break;
+        }
+
+        return false;
+    }
+
+    bool include_key(const OutputOptions &out) {
+
+        switch(out) {
+            case KEY:
+            case KEY_VALUE_RAW:
+            case KEY_VALUE_DIGEST:
+                return true;
+            default:
+                break;
+        }
+
+        return false;
+
+    }
+
+
     // conf_str is the json config
     Driver* create_aerospike_driver(const std::string &conf_str, const std::string &lua_path);
 

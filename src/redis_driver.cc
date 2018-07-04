@@ -17,9 +17,11 @@
  */
 
 #include "driver.h"
+#include "crypto.h"
 #include "redis_driver.h"
 
 #include <hiredis/hiredis.h>
+#include <msgpack.h>
 
 #include <nlohmann/json.hpp>
 
@@ -126,8 +128,72 @@ namespace gkvs {
         return new RedisDriver(conf_str);
     }
 
+    void value_result(redisReply *reply, gkvs::Value *value, const OutputOptions &out);
+
+
+    inline std::string parse_redis_value(redisReply *reply) {
+
+        if (reply->type == REDIS_REPLY_ARRAY) {
+            return std::string(reply->str, reply->len);
+        }
+
+        msgpack_sbuffer sbuf;
+        msgpack_packer pk;
+        msgpack_sbuffer_init(&sbuf);
+        msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
+
+        switch(reply->type) {
+
+            case REDIS_REPLY_NIL:
+                msgpack_pack_nil(&pk);
+                break;
+
+            case REDIS_REPLY_STRING: {
+                size_t len = strlen(reply->str);
+                msgpack_pack_str(&pk, len);
+                msgpack_pack_str_body(&pk, reply->str, len);
+                break;
+            }
+
+            case REDIS_REPLY_INTEGER:
+                msgpack_pack_int64(&pk, reply->integer);
+                break;
+
+            default:
+                msgpack_pack_nil(&pk);
+                break;
+
+        }
+
+        std::string result(sbuf.data, sbuf.size);
+        msgpack_sbuffer_destroy(&sbuf);
+        return result;
+    }
+
 }
 
+ void gkvs::value_result(redisReply *reply, gkvs::Value *value, const OutputOptions &out) {
+
+     bool includeValue = include_value(out);
+
+     if (!includeValue) {
+         return;
+     }
+
+     bool includeValueDigest = include_value_digest(out);
+
+     std::string ser = parse_redis_value(reply);
+
+     if (includeValueDigest) {
+         Ripend160Hash hash;
+         hash.apply(ser.data(), ser.size());
+         value->set_raw(hash.data(), hash.size());
+     }
+     else {
+         value->set_raw(ser.data(), ser.size());
+     }
+
+}
 
 void gkvs::RedisDriver::do_multi_get(const BatchKeyOperation *request, BatchValueResult *response) {
 
@@ -169,6 +235,9 @@ void gkvs::RedisDriver::do_get(const KeyOperation *request, ValueResult *respons
         error(reply, response->mutable_status());
     }
     else {
+
+        value_result(reply, response->mutable_value(), request->output());
+
         success(response->mutable_status());
     }
 
@@ -217,26 +286,6 @@ void gkvs::RedisDriver::do_put(const PutOperation *request, StatusResult *respon
         error(reply, response->mutable_status());
     }
     else {
-
-        switch(reply->type) {
-
-            case REDIS_REPLY_NIL:
-                break;
-
-            case REDIS_REPLY_STRING:
-                break;
-
-            case REDIS_REPLY_INTEGER:
-                break;
-
-            case REDIS_REPLY_ARRAY:
-                break;
-
-            case REDIS_REPLY_STATUS:
-                break;
-
-        }
-
         success(response->mutable_status());
     }
 

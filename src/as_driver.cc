@@ -400,50 +400,6 @@ namespace gkvs {
 
         }
 
-        bool include_value(const OutputOptions &out) {
-
-            switch(out) {
-                case VALUE_RAW:
-                case VALUE_DIGEST:
-                case KEY_VALUE_RAW:
-                case KEY_VALUE_DIGEST:
-                    return true;
-                default:
-                    break;
-            }
-
-            return false;
-        }
-
-        bool include_value_digest(const OutputOptions &out) {
-
-            switch(out) {
-                case VALUE_DIGEST:
-                case KEY_VALUE_DIGEST:
-                    return true;
-                default:
-                    break;
-            }
-
-            return false;
-        }
-
-        bool include_key(const OutputOptions &out) {
-
-            switch(out) {
-                case KEY:
-                case KEY_VALUE_RAW:
-                case KEY_VALUE_DIGEST:
-                    return true;
-                default:
-                    break;
-            }
-
-            return false;
-
-        }
-
-
         void key_result(const Key& key , ValueResult *result, const OutputOptions &out) {
 
             if (include_key(out)) {
@@ -455,6 +411,11 @@ namespace gkvs {
         void value_result(as_record *rec, ValueResult *result, const OutputOptions &out) {
 
             bool includeValue = include_value(out);
+
+            if (!includeValue) {
+                return;
+            }
+
             bool includeValueDigest = include_value_digest(out);
 
             as_record_ser ser;
