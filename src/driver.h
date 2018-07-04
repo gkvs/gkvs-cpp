@@ -147,6 +147,7 @@ namespace gkvs {
 
     Driver* create_redis_driver(const std::string &conf_str);
 
+    Driver* create_rocks_driver(const std::string &conf_str);
 
 }
 

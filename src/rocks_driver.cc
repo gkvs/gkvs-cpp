@@ -17,7 +17,7 @@
  */
 
 #include "driver.h"
-#include "redis_driver.h"
+#include "rocks_driver.h"
 
 #include <nlohmann/json.hpp>
 
@@ -26,20 +26,20 @@ using json = nlohmann::json;
 namespace gkvs {
 
 
-    class RedisDriver final : public Driver {
+    class RocksDriver final : public Driver {
 
     public:
 
-        explicit RedisDriver(const std::string &conf_str) : Driver() {
+        explicit RocksDriver(const std::string &conf_str) : Driver() {
 
             json conf = nlohmann::json::parse(conf_str.begin(), conf_str.end());
 
 
         }
 
-        ~RedisDriver() override {
+        ~RocksDriver() override {
 
-            std::cout << "Graceful shutdown redis connection" << std::endl;
+            std::cout << "Graceful shutdown rocks driver" << std::endl;
 
         }
 
@@ -95,47 +95,37 @@ namespace gkvs {
     };
 
 
-    Driver* create_redis_driver(const std::string &conf_str, const std::string &lua_path) {
-        return new RedisDriver(conf_str);
+    Driver* create_rocks_driver(const std::string &conf_str, const std::string &lua_path) {
+        return new RocksDriver(conf_str);
     }
 
 }
 
 
-void gkvs::RedisDriver::do_multi_get(const BatchKeyOperation *request, BatchValueResult *response) {
+void gkvs::RocksDriver::do_multi_get(const BatchKeyOperation *request, BatchValueResult *response) {
 
 
 
 }
 
-void gkvs::RedisDriver::do_scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer) {
+void gkvs::RocksDriver::do_scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer) {
 
 
 }
 
-void gkvs::RedisDriver::do_get(const KeyOperation *request, ValueResult *response) {
+void gkvs::RocksDriver::do_get(const KeyOperation *request, ValueResult *response) {
 
     success(response->mutable_status());
 
 }
 
-void gkvs::RedisDriver::do_put(const PutOperation *request, StatusResult *response) {
+void gkvs::RocksDriver::do_put(const PutOperation *request, StatusResult *response) {
 
-    /**
-    redisReply *reply = 0;
-
-// set value
-    reply = redisCommand(context, "SET %b %b", key, (size_t) strlen(key), &t, (size_t) vsize);
-    if (!reply)
-        return REDIS_ERR;
-    freeReplyObject(reply);
-
-     **/
     success(response->mutable_status());
 
 }
 
-void gkvs::RedisDriver::do_remove(const KeyOperation *request, StatusResult *response) {
+void gkvs::RocksDriver::do_remove(const KeyOperation *request, StatusResult *response) {
 
     success(response->mutable_status());
 

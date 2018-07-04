@@ -55,7 +55,7 @@ all: system-check $(PROJECT)-cli $(PROJECT)
 $(PROJECT)-cli: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_client.o helper.o
 	$(CXX) $^ $(LDFLAGS) -o $@
 
-$(PROJECT): $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o as_helper.o as_driver_tests.o redis_driver.o crypto.o
+$(PROJECT): $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o as_helper.o as_driver_tests.o redis_driver.o rocks_driver.o crypto.o
 	$(CXX) $^ $(LDFLAGS) $(AEROFLAGS) $(LUA_FLAGS) -o $@
 
 #crypto.o: crypto.cc

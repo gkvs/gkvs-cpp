@@ -4,49 +4,44 @@ project(gkvs C CXX)
 
 set(CMAKE_CXX_STANDARD 11)
 
-message(STATUS "Running on ${CMAKE_SYSTEM_NAME}")
+if(NOT MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+else()
+    add_definitions(-D_WIN32_WINNT=0x600)
+endif()
 
-include(FindPkgConfig)
+message(STATUS "Running on ${CMAKE_SYSTEM_NAME}")
+message(STATUS "Superbuild")
+
 
 # Msgpack
 
 find_package(msgpack CONFIG REQUIRED)
-message(STATUS "Using msgpack ${msgpack_VERSION}")
+message(STATUS "Using msgpack ${msgpack_VERSION} -I${msgpack_INCLUDE_DIR}")
 
 # RocksDB
 
-if (_GKVS_SUPERBUILD)
+#if (WIN32)
+#    set(_FINDPACKAGE_ROCKSDB_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/../rocksdb/cmake")
+#else()
+#    set(_FINDPACKAGE_ROCKSDB_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/../rocksdb/lib/cmake/rocksdb")
+#endif()
 
-    if(NOT rocksdb_DIR)
-        set(rocksdb_DIR "${CMAKE_CURRENT_BINARY_DIR}/../rocksdb/lib/cmake/rocksdb")
-    endif()
-
-    message(STATUS "Using rocksdb_DIR ${rocksdb_DIR}")
-    find_package(rocksdb CONFIG REQUIRED)
-    set(_ROCKSDB_LIB rocksdb)
-    message(STATUS "Using rocksdb ${rocksdb_VERSION}")
-
-else()
-
-    find_library(_ROCKSDB_LIB librocksdb.a rocksdb)
-    message(STATUS "Using rocksdb ${_ROCKSDB_LIB}")
-
+if(NOT rocksdb_DIR)
+    set(rocksdb_DIR "${CMAKE_CURRENT_BINARY_DIR}/../rocksdb/lib/cmake/rocksdb")
 endif()
+
+message(STATUS "Using rocksdb_DIR ${rocksdb_DIR}")
+find_package(rocksdb CONFIG REQUIRED)
+set(_ROCKSDB_LIB rocksdb)
+message(STATUS "Using rocksdb ${rocksdb_VERSION}")
+
 
 # REDIS
 
-if (_GKVS_SUPERBUILD)
-
-    include_directories("../modules/hiredis")
-    file(GLOB _REDIS_LIB "../modules/hiredis/libhiredis.a")
-    message(STATUS "Using Redis Client ${_REDIS_LIB}")
-
-else()
-
-    find_library(_REDIS_LIB libhiredis.a hiredis)
-    message(STATUS "Using hiredis ${_REDIS_LIB}")
-
-endif()
+include_directories("../modules/hiredis")
+file(GLOB _REDIS_LIB "../modules/hiredis/libhiredis.a")
+message(STATUS "Using Redis Client ${_REDIS_LIB}")
 
 
 # JSON
@@ -55,95 +50,72 @@ include_directories("../modules/nlohmann_json/include")
 
 # Aerospike
 
-if (_GKVS_SUPERBUILD)
+include_directories("../modules/aerospike-client-c/modules/common/src/include")
+include_directories("../modules/aerospike-client-c/src/include")
 
-    include_directories("../modules/aerospike-client-c/src/include")
-    include_directories("../modules/aerospike-client-c/modules/common/src/include")
+set(_AS_LIB_PATH "../modules/aerospike-client-c/target/${CMAKE_SYSTEM_NAME}-x86_64/lib")
 
-    set(_AS_LIB_PATH "../modules/aerospike-client-c/target/${CMAKE_SYSTEM_NAME}-x86_64/lib")
+file(GLOB _AS_LIB "${_AS_LIB_PATH}/libaerospike.a")
+message(STATUS "Using Aerospike Client ${_AS_LIB}")
 
-    file(GLOB _AS_LIB "${_AS_LIB_PATH}/libaerospike.a")
-    message(STATUS "Using Aerospike Client ${_AS_LIB}")
+find_library(_Z_LIB z)
+message(STATUS "Using z ${_Z_LIB}")
+list(APPEND LIB_LIST ${_Z_LIB})
 
-    find_library(_EVENT libevent.a event)
-    message(STATUS "Using libevent ${_EVENT}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DAS_USE_LIBEVENT")
 
-    find_library(_EVENT_PTHREADS libevent_pthreads.a event_pthreads)
-    message(STATUS "Using libevent_pthreads ${_EVENT_PTHREADS}")
+find_library(_EVENT_LIB libevent.a event)
+message(STATUS "Using libevent ${_EVENT_LIB}")
+list(APPEND LIB_LIST ${_EVENT_LIB})
 
-else()
-
-    find_library(_AS_LIB libaerospike.a aerospike)
-    message(STATUS "Using aerospike ${_AS_LIB}")
-
-endif()
-
+find_library(_EVENT_LIB_PTHREADS libevent_pthreads.a event_pthreads)
+message(STATUS "Using libevent_pthreads ${_EVENT_LIB_PTHREADS}")
+list(APPEND LIB_LIST ${_EVENT_LIB_PTHREADS})
 
 # GLOG
 
-if (_GKVS_SUPERBUILD)
-
-    add_subdirectory(../modules/glog ${CMAKE_CURRENT_BINARY_DIR}/glog EXCLUDE_FROM_ALL)
-    message(STATUS "Using GLOG via add_subdirectory.")
-
-else()
-
-    find_package(glog CONFIG REQUIRED)
-    message(STATUS "Using glog ${glog_VERSION} via package")
-
-endif()
+add_subdirectory(../modules/glog ${CMAKE_CURRENT_BINARY_DIR}/../glog EXCLUDE_FROM_ALL)
+message(STATUS "Using GLOG via add_subdirectory modules/glog")
 
 # Protobuf
 
-if (_GKVS_SUPERBUILD)
-
-    set(protobuf_MODULE_COMPATIBLE TRUE)
-    find_package(protobuf CONFIG REQUIRED)
-    message(STATUS "Using protobuf ${protobuf_VERSION}")
-
-    set(_PROTOBUF_LIB protobuf::libprotobuf)
-    set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
-
-else()
-
-    pkg_check_modules (protobuf protobuf>=3.5.1)
-
-    message(STATUS "Using protobuf ${protobuf_VERSION}")
-
-    set(_PROTOBUF_LIB ${protobuf_LIBRARIES})
-    set(_PROTOBUF_PROTOC protoc)
-
-    #target_link_libraries(testapp ${protobuf_LIBRARIES})
-    #target_include_directories(testapp PUBLIC ${protobuf_INCLUDE_DIRS})
-    #target_compile_options(testapp PUBLIC ${protobuf_CFLAGS_OTHER})
-
+if(NOT protobuf_DIR)
+    set(protobuf_DIR "${CMAKE_CURRENT_BINARY_DIR}/../protobuf/lib/cmake/protobuf")
 endif()
 
-# Find gRPC installation
-# Looks for gRPCConfig.cmake file installed by gRPC's cmake installation.
+set(protobuf_MODULE_COMPATIBLE TRUE)
+find_package(protobuf CONFIG REQUIRED)
+message(STATUS "Using protobuf ${protobuf_VERSION}")
 
-if (_GKVS_SUPERBUILD)
+set(_PROTOBUF_LIB protobuf::libprotobuf)
+set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
 
-    find_package(gRPC CONFIG REQUIRED)
-    message(STATUS "Using gRPC ${gRPC_VERSION}")
 
-    set(_GRPC_GRPCPP gRPC::grpc++)
-    set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
+# GRPC++
 
-else()
+find_package(gRPC CONFIG REQUIRED)
+message(STATUS "Using gRPC ${gRPC_VERSION}")
 
-    pkg_check_modules (gRPC++ gRPC++>=1.2.0)
+set(_GRPC_GRPCPP gRPC::grpc++)
+set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
 
-    message(STATUS "Using gRPC++ ${gRPC++_VERSION}")
 
-    set(_GRPC_GRPCPP grpc++)
-    set(_GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin)
-
-endif()
+# GFLAGS
 
 find_package(gflags CONFIG REQUIRED)
+message("-- Using gflags ${gflags_VERSION}")
 
 # OpenSSL
+
+if(NOT OPENSSL_ROOT_DIR)
+    set(OPENSSL_ROOT_DIR "$ENV{OPENSSL_ROOT_DIR}")
+endif()
+
+if(NOT OPENSSL_ROOT_DIR)
+    set(OPENSSL_ROOT_DIR "/usr/local/Cellar/openssl/1.0.2o_2")
+endif()
+
+message("OpenSSL root dir: ${OPENSSL_ROOT_DIR}")
 
 find_package(OpenSSL REQUIRED)
 
@@ -153,28 +125,31 @@ message("OpenSSL libraries: ${OPENSSL_LIBRARIES}")
 include_directories(${OPENSSL_INCLUDE_DIR})
 list(APPEND LIB_LIST ${OPENSSL_LIBRARIES})
 
+# Generate PROTOS
+
 get_filename_component(gkvs_proto "../protos/gkvs.proto" ABSOLUTE)
 get_filename_component(gkvs_proto_path "${gkvs_proto}" PATH)
 
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/gen")
+
 # Generated sources
-set(gkvs_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/gkvs.pb.cc")
-set(gkvs_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/gkvs.pb.h")
-set(gkvs_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/gkvs.grpc.pb.cc")
-set(gkvs_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/gkvs.grpc.pb.h")
+set(gkvs_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/gen/gkvs.pb.cc")
+set(gkvs_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/gen/gkvs.pb.h")
+set(gkvs_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/gen/gkvs.grpc.pb.cc")
+set(gkvs_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/gen/gkvs.grpc.pb.h")
 
 add_custom_command(
         OUTPUT "${gkvs_proto_srcs}" "${gkvs_proto_hdrs}" "${gkvs_grpc_srcs}" "${gkvs_grpc_hdrs}"
         COMMAND ${_PROTOBUF_PROTOC}
-        ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
-        --cpp_out "${CMAKE_CURRENT_BINARY_DIR}"
+        ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}/gen"
+        --cpp_out "${CMAKE_CURRENT_BINARY_DIR}/gen"
         -I "${gkvs_proto_path}"
         --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
         "${gkvs_proto}"
         DEPENDS "${gkvs_proto}")
 
 # Include generated *.pb.h files
-include_directories("${CMAKE_CURRENT_BINARY_DIR}")
-
+include_directories("${CMAKE_CURRENT_BINARY_DIR}/gen")
 # Build client
 
 add_executable(gkvs-cli
@@ -197,6 +172,7 @@ add_executable(gkvs
         "as_driver_tests.cc"
         "as_helper.cc"
         "redis_driver.cc"
+        "rocks_driver.cc"
         "crypto.cc"
         ${gkvs_proto_srcs}
         ${gkvs_grpc_srcs})
@@ -209,7 +185,5 @@ target_link_libraries(gkvs
         ${_ROCKSDB_LIB}
         ${_REDIS_LIB}
         ${_AS_LIB}
-        ${LIB_LIST}
-        ${_EVENT}
-        ${_EVENT_PTHREADS})
+        ${LIB_LIST})
 

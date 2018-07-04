@@ -95,7 +95,7 @@ set(_FINDPACKAGE_ROCKSDB_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/rocksdb/lib/cma
 # Build gkvs as external project, now all deps are available in find_package
 ExternalProject_Add(gkvs
         PREFIX gkvs
-        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.."
+        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../src"
         BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/gkvs"
         INSTALL_COMMAND ""
         CMAKE_CACHE_ARGS
