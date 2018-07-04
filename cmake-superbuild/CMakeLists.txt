@@ -7,24 +7,6 @@ include(ExternalProject)
 set(CMAKE_CXX_STANDARD 11)
 set(_GKVS_SUPERBUILD ON)
 
-# Builds msgpack-c project from the git submodule
-ExternalProject_Add(msgpack
-        PREFIX msgpack
-        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../modules/msgpack-c"
-        CMAKE_CACHE_ARGS
-        -DMSGPACK_CXX11:BOOL=ON
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/msgpack
-        )
-
-# Builds rocksdb project from the git submodule
-ExternalProject_Add(rocksdb
-        PREFIX rocksdb
-        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../modules/rocksdb"
-        CMAKE_CACHE_ARGS
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/rocksdb
-        )
-set(rocksdb_DIR "${CMAKE_CURRENT_BINARY_DIR}/rocksdb/lib/cmake/rocksdb")
-set(_FINDPACKAGE_ROCKSDB_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/rocksdb/lib/cmake/rocksdb")
 
 # Builds c-ares project from the git submodule
 ExternalProject_Add(c-ares
@@ -91,6 +73,24 @@ ExternalProject_Add(grpc
         DEPENDS c-ares protobuf zlib
         )
 
+# Builds msgpack-c project from the git submodule
+ExternalProject_Add(msgpack
+        PREFIX msgpack
+        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../modules/msgpack-c"
+        CMAKE_CACHE_ARGS
+        -DMSGPACK_CXX11:BOOL=ON
+        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/msgpack
+        )
+
+# Builds rocksdb project from the git submodule
+ExternalProject_Add(rocksdb
+        PREFIX rocksdb
+        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../modules/rocksdb"
+        CMAKE_CACHE_ARGS
+        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/rocksdb
+        )
+set(rocksdb_DIR "${CMAKE_CURRENT_BINARY_DIR}/rocksdb/lib/cmake/rocksdb")
+set(_FINDPACKAGE_ROCKSDB_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/rocksdb/lib/cmake/rocksdb")
 
 # Build gkvs as external project, now all deps are available in find_package
 ExternalProject_Add(gkvs
