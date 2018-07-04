@@ -45,6 +45,10 @@ using grpc::ServerWriter;
 using grpc::Status;
 using std::chrono::system_clock;
 
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
+
 namespace gkvs {
 
     class GenericStoreAsync final {
@@ -240,11 +244,31 @@ void onTerminate(int sign)
 
 }
 
-std::shared_ptr<gkvs::Driver> create_aerospike_driver(const std::string& filename) {
 
-    std::string aerospike_conf = gkvs::get_file_content(filename);
+std::shared_ptr<gkvs::Driver> create_driver(const std::string& content) {
 
-    gkvs::Driver *driver = gkvs::create_aerospike_driver(aerospike_conf, FLAGS_lua_dir);
+    gkvs::Driver *driver = nullptr;
+
+    json conf = nlohmann::json::parse(content.begin(), content.end());
+
+    std::string name = conf["name"].get<std::string>();
+    std::string driver_name = conf["driver"].get<std::string>();
+
+    json driver_conf = conf["config"];
+
+    if (driver_name == "redis") {
+
+        driver = gkvs::create_redis_driver(name, driver_conf);
+
+    }
+    else if (driver_name == "aerospike") {
+
+        driver = gkvs::create_aerospike_driver(name, driver_conf, FLAGS_lua_dir);
+
+    }
+    else {
+        throw std::runtime_error("unknown driver" + content);
+    }
 
     return std::shared_ptr<gkvs::Driver>(driver);
 }
@@ -295,9 +319,11 @@ void build_sync_server(std::shared_ptr<gkvs::Driver> driver, std::shared_ptr<grp
 }
 
 
-void RunServer(const std::string& as_filename) {
+void RunServer(const std::string& filename) {
 
-    std::shared_ptr<gkvs::Driver> driver = create_aerospike_driver(as_filename);
+    std::string content = gkvs::get_file_content(filename);
+
+    std::shared_ptr<gkvs::Driver> driver = create_driver(content);
     std::shared_ptr<grpc::ServerCredentials> creds = create_server_credentials();
 
     build_sync_server(driver, creds);

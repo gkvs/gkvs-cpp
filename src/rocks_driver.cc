@@ -30,9 +30,8 @@ namespace gkvs {
 
     public:
 
-        explicit RocksDriver(const std::string &conf_str) : Driver() {
+        explicit RocksDriver(const std::string& name, const json &conf, const std::string& db_dir) : Driver(name) {
 
-            json conf = nlohmann::json::parse(conf_str.begin(), conf_str.end());
 
 
         }
@@ -95,8 +94,8 @@ namespace gkvs {
     };
 
 
-    Driver* create_rocks_driver(const std::string &conf_str, const std::string &lua_path) {
-        return new RocksDriver(conf_str);
+    Driver* create_rocks_driver(const std::string &name, const json& conf, const std::string &db_dir) {
+        return new RocksDriver(name, conf, db_dir);
     }
 
 }

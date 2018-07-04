@@ -20,6 +20,8 @@
 #include "crypto.h"
 #include "redis_driver.h"
 
+#include <glog/logging.h>
+
 #include <hiredis/hiredis.h>
 #include <msgpack.h>
 
@@ -34,14 +36,14 @@ namespace gkvs {
 
     public:
 
-        explicit RedisDriver(const std::string &conf_str) : Driver() {
+        explicit RedisDriver(const std::string& name, const json &conf) : Driver(name) {
 
-            json conf = nlohmann::json::parse(conf_str.begin(), conf_str.end());
+            hostname_ = conf["host"].get<std::string>();
+            port_ = conf["port"].get<int>();
 
-            const char *hostname = conf["host"].get<std::string>().c_str();
-            int port = conf["port"].get<int>();
+            LOG(INFO) << "Redis connect to " << hostname_ << ":" << port_ << std::endl;
 
-            context_ = redisConnectNonBlock(hostname, port);
+            context_ = redisConnectNonBlock(hostname_.c_str(), port_);
 
             if (context_ == nullptr || context_->err) {
                 if (context_) {
@@ -101,6 +103,8 @@ namespace gkvs {
 
         redisContext *context_;
 
+        std::string hostname_;
+        int port_;
 
 
     protected:
@@ -121,58 +125,67 @@ namespace gkvs {
             status->set_errormessage(reply->str);
         }
 
+        void value_result(redisReply *reply, gkvs::Value *value, const OutputOptions &out);
+
+        inline bool is_error(redisReply *reply) {
+            return reply->type == REDIS_REPLY_ERROR;
+        }
+
+        inline std::string parse_redis_value(redisReply *reply);
+
     };
 
 
-    Driver* create_redis_driver(const std::string &conf_str, const std::string &lua_path) {
-        return new RedisDriver(conf_str);
+    Driver* create_redis_driver(const std::string &name, const json& conf) {
+        return new RedisDriver(name, conf);
     }
 
-    void value_result(redisReply *reply, gkvs::Value *value, const OutputOptions &out);
-
-
-    inline std::string parse_redis_value(redisReply *reply) {
-
-        if (reply->type == REDIS_REPLY_ARRAY) {
-            return std::string(reply->str, reply->len);
-        }
-
-        msgpack_sbuffer sbuf;
-        msgpack_packer pk;
-        msgpack_sbuffer_init(&sbuf);
-        msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
-
-        switch(reply->type) {
-
-            case REDIS_REPLY_NIL:
-                msgpack_pack_nil(&pk);
-                break;
-
-            case REDIS_REPLY_STRING: {
-                size_t len = strlen(reply->str);
-                msgpack_pack_str(&pk, len);
-                msgpack_pack_str_body(&pk, reply->str, len);
-                break;
-            }
-
-            case REDIS_REPLY_INTEGER:
-                msgpack_pack_int64(&pk, reply->integer);
-                break;
-
-            default:
-                msgpack_pack_nil(&pk);
-                break;
-
-        }
-
-        std::string result(sbuf.data, sbuf.size);
-        msgpack_sbuffer_destroy(&sbuf);
-        return result;
-    }
 
 }
 
- void gkvs::value_result(redisReply *reply, gkvs::Value *value, const OutputOptions &out) {
+inline std::string gkvs::RedisDriver::parse_redis_value(redisReply *reply) {
+
+    if (reply->type == REDIS_REPLY_ARRAY) {
+        return std::string(reply->str, reply->len);
+    }
+
+    msgpack_sbuffer sbuf;
+    msgpack_packer pk;
+    msgpack_sbuffer_init(&sbuf);
+    msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
+
+    switch(reply->type) {
+
+        case REDIS_REPLY_NIL:
+            msgpack_pack_nil(&pk);
+            break;
+
+        case REDIS_REPLY_STRING: {
+            size_t len = strlen(reply->str);
+            msgpack_pack_str(&pk, len);
+            msgpack_pack_str_body(&pk, reply->str, len);
+            break;
+        }
+
+        case REDIS_REPLY_INTEGER:
+            msgpack_pack_int64(&pk, reply->integer);
+            break;
+
+        case REDIS_REPLY_ARRAY:
+            break;
+
+        default:
+            msgpack_pack_nil(&pk);
+            break;
+
+    }
+
+    std::string result(sbuf.data, sbuf.size);
+    msgpack_sbuffer_destroy(&sbuf);
+    return result;
+}
+
+ void gkvs::RedisDriver::value_result(redisReply *reply, gkvs::Value *value, const OutputOptions &out) {
 
      bool includeValue = include_value(out);
 
@@ -197,11 +210,72 @@ namespace gkvs {
 
 void gkvs::RedisDriver::do_multi_get(const BatchKeyOperation *request, BatchValueResult *response) {
 
+    int size = request->operation_size();
 
+    if (size == 0) {
+        return;
+    }
+
+    for (int i = 0; i < size; ++i) {
+
+        ValueResult* result = response->add_result();
+        do_get(&request->operation(i), result);
+
+    }
 
 }
 
 void gkvs::RedisDriver::do_scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer) {
+
+    redisReply *keysReply = (redisReply *) redisCommand(context_, "KEYS *");
+
+    if (!keysReply) {
+        ValueResult response;
+        driver_error("redis error", response.mutable_status());
+        writer->WriteLast(response, grpc::WriteOptions());
+        return;
+    }
+
+    if (is_error(keysReply)) {
+        ValueResult response;
+        error(keysReply, response.mutable_status());
+        writer->WriteLast(response, grpc::WriteOptions());
+        return;
+    }
+
+    if (keysReply->type != REDIS_REPLY_ARRAY) {
+        ValueResult response;
+        driver_error(keysReply->type, "wrong reply type", response.mutable_status());
+        writer->WriteLast(response, grpc::WriteOptions());
+        return;
+    }
+
+    grpc::WriteOptions writeOptions = grpc::WriteOptions();
+
+    int size = keysReply->elements;
+    for(int i = 0; i < size; ++i) {
+
+        ValueResult response;
+
+        redisReply * element = keysReply->element[i];
+
+        if (is_error(element)) {
+            error(element, response.mutable_status());
+        }
+        else {
+            value_result(element, response.mutable_value(), request->output());
+            success(response.mutable_status());
+        }
+
+        if (i + 1 == size) {
+            writeOptions = writeOptions.set_last_message();
+        }
+
+        writer->Write(response, writeOptions);
+
+    }
+
+    freeReplyObject(keysReply);
 
 
 }

@@ -49,9 +49,6 @@
 #include "as_driver.h"
 #include "crypto.h"
 
-#include <nlohmann/json.hpp>
-
-using json = nlohmann::json;
 
 #define AS_MAX_LOG_STR 1024
 static bool glog_callback(as_log_level level, const char * func, const char * file, uint32_t line, const char * fmt, ...);
@@ -67,9 +64,9 @@ namespace gkvs {
 
     public:
 
-        explicit AerospikeDriver(const std::string &conf_str, const std::string &lua_dir) : Driver() {
+        explicit AerospikeDriver(const std::string& name, const json &conf, const std::string &lua_dir) : Driver(name) {
 
-            json conf = nlohmann::json::parse(conf_str.begin(), conf_str.end());
+            //json conf = nlohmann::json::parse(conf_str.begin(), conf_str.end());
 
             as_log_set_callback(glog_callback);
 
@@ -520,8 +517,8 @@ namespace gkvs {
 
     };
 
-    Driver* create_aerospike_driver(const std::string &conf_str, const std::string &lua_path) {
-        return new AerospikeDriver(conf_str, lua_path);
+    Driver* create_aerospike_driver(const std::string &name, const json& conf, const std::string &lua_dir) {
+        return new AerospikeDriver(name, conf, lua_dir);
     }
 
 
@@ -853,12 +850,12 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
 
 void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::ValueResult> *writer) {
 
-    const std::string& storeName = request->tablename();
+    const std::string& tableName = request->tablename();
 
-    if (storeName.empty()) {
+    if (tableName.empty()) {
 
         ValueResult result;
-        bad_request("empty store name", result.mutable_status());
+        bad_request("empty table name", result.mutable_status());
         writer->WriteLast(result, grpc::WriteOptions());
         return;
     }
@@ -869,7 +866,7 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc
     if (request->has_bucket()) {
 
         as_query query;
-        as_query_init(&query, namespace_.c_str(), storeName.c_str());
+        as_query_init(&query, namespace_.c_str(), tableName.c_str());
 
         if (!include_value(request->output())) {
             query.no_bins = true;
@@ -902,7 +899,7 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc
     else {
 
         as_scan scan;
-        as_scan_init(&scan, namespace_.c_str(), storeName.c_str());
+        as_scan_init(&scan, namespace_.c_str(), tableName.c_str());
         scan.deserialize_list_map = false;
 
         if (!include_value(request->output())) {

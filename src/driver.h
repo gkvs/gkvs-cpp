@@ -22,6 +22,9 @@
 #include <vector>
 #include "gkvs.grpc.pb.h"
 
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 namespace gkvs {
 
@@ -58,7 +61,8 @@ namespace gkvs {
     class Driver {
 
     public:
-        Driver() = default;
+        explicit Driver(const std::string& name) : name_(name) {
+        }
         virtual ~Driver() = default;
         virtual void get(const KeyOperation* request, ValueResult* response) = 0;
         virtual void multiGet(const BatchKeyOperation *request, BatchValueResult *response) = 0;
@@ -66,8 +70,15 @@ namespace gkvs {
         virtual void put(const PutOperation* request, StatusResult* response) = 0;
         virtual void remove(const KeyOperation* request, StatusResult* response) = 0;
 
-    protected:
+        inline const std::string& get_name() {
+            return name_;
+        }
 
+    private:
+
+        std::string name_;
+
+    protected:
 
         void success(Status *status) {
             status->set_code(StatusCode::SUCCESS);
@@ -138,60 +149,60 @@ namespace gkvs {
             return true;
         }
 
+        inline bool include_value(const OutputOptions &out) {
+
+            switch(out) {
+                case VALUE_RAW:
+                case VALUE_DIGEST:
+                case KEY_VALUE_RAW:
+                case KEY_VALUE_DIGEST:
+                    return true;
+                default:
+                    break;
+            }
+
+            return false;
+        }
+
+        inline bool include_value_digest(const OutputOptions &out) {
+
+            switch(out) {
+                case VALUE_DIGEST:
+                case KEY_VALUE_DIGEST:
+                    return true;
+                default:
+                    break;
+            }
+
+            return false;
+        }
+
+        inline bool include_key(const OutputOptions &out) {
+
+            switch(out) {
+                case KEY:
+                case KEY_VALUE_RAW:
+                case KEY_VALUE_DIGEST:
+                    return true;
+                default:
+                    break;
+            }
+
+            return false;
+
+        }
+
     };
-
-    bool include_value(const OutputOptions &out) {
-
-        switch(out) {
-            case VALUE_RAW:
-            case VALUE_DIGEST:
-            case KEY_VALUE_RAW:
-            case KEY_VALUE_DIGEST:
-                return true;
-            default:
-                break;
-        }
-
-        return false;
-    }
-
-    bool include_value_digest(const OutputOptions &out) {
-
-        switch(out) {
-            case VALUE_DIGEST:
-            case KEY_VALUE_DIGEST:
-                return true;
-            default:
-                break;
-        }
-
-        return false;
-    }
-
-    bool include_key(const OutputOptions &out) {
-
-        switch(out) {
-            case KEY:
-            case KEY_VALUE_RAW:
-            case KEY_VALUE_DIGEST:
-                return true;
-            default:
-                break;
-        }
-
-        return false;
-
-    }
 
 
     // conf_str is the json config
-    Driver* create_aerospike_driver(const std::string &conf_str, const std::string &lua_path);
+    Driver* create_aerospike_driver(const std::string& name, const json& conf, const std::string& lua_path);
 
     bool as_run_tests();
 
-    Driver* create_redis_driver(const std::string &conf_str);
+    Driver* create_redis_driver(const std::string& name, const json& conf);
 
-    Driver* create_rocks_driver(const std::string &conf_str);
+    Driver* create_rocks_driver(const std::string& name, const json& conf, const std::string& work_dir);
 
 }
 
