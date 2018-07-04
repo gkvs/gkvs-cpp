@@ -1,0 +1,3 @@
+LOAD CLUSTERS @test-clusters.json;
+LOAD TABLES @test-tables.json;
+
