@@ -38,8 +38,11 @@ namespace gkvs {
 
         explicit RedisDriver(const std::string& name, const json &conf) : Driver(name) {
 
-            hostname_ = conf["host"].get<std::string>();
-            port_ = conf["port"].get<int>();
+            auto host_it = conf.find("host");
+            auto port_it = conf.find("port");
+
+            hostname_ = host_it != conf.end() ? host_it->get<std::string>() : "127.0.0.1";
+            port_ = port_it != conf.end() ? port_it->get<int>() : 6379;
 
             LOG(INFO) << "Redis connect to " << hostname_ << ":" << port_ << std::endl;
 
@@ -49,7 +52,6 @@ namespace gkvs {
                 if (context_) {
                     std::cout << "Connection error: " << context_->errstr << std::endl;
                     redisFree(context_);
-                    throw std::runtime_error("connection error");
                 } else {
                     std::cout << "Connection error: can't allocate redis context" << std::endl;
                 }
@@ -135,27 +137,37 @@ namespace gkvs {
 
         }
 
-        int64_t get_version(std::string raw) {
-
-            MurMur3 murmur3;
-            uint64_t* out = murmur3.hash128(raw.c_str(), raw.size());
-
-            int64_t h = static_cast<int64_t>(out[0] ^ out[1]);
-
-            // all positive
-            if (h < 0) {
-                h = -h;
-            }
-
-            return h == 0 ? 1 : h;
-        }
-
-        void metadata_result(int64_t version, int ttl, ValueResult *result) {
+        void metadata_result(const uint64_t* verOrNull, int ttl, ValueResult *result) {
 
             Metadata *meta = result->mutable_metadata();
-            meta->set_version(version);
+
+            if (verOrNull != nullptr) {
+                set_version(verOrNull, meta);
+            }
+
             meta->set_ttl(ttl);
 
+        }
+
+        void set_version(const uint64_t* ver, Metadata *meta) {
+
+            meta->add_version(ver[0] & 0xFFFFFFFF);
+            meta->add_version(ver[0] >> 32);
+
+            meta->add_version(ver[1] & 0xFFFFFFFF);
+            meta->add_version(ver[1] >> 32);
+
+        }
+
+        bool get_version(const PutOperation* request, uint64_t* rver) {
+
+            if (request->version_size() == 4) {
+                rver[0] = (((uint64_t)request->version(1)) << 32) | request->version(0);
+                rver[1] = (((uint64_t)request->version(3)) << 32) | request->version(2);
+                return true;
+            }
+
+            return false;
         }
 
         void key_result(const redis_reply& reply, gkvs::Key* key, const OutputOptions &out);
@@ -248,22 +260,9 @@ void gkvs::RedisDriver::key_result(const redis_reply& reply, gkvs::Key* key, con
 
 std::string gkvs::RedisDriver::value_result(const redis_reply& reply, gkvs::Value *value, const OutputOptions &out) {
 
-     bool includeValue = include_value(out);
-
-     if (!includeValue) {
-         return reply.to_raw();
-     }
-
-     bool includeValueDigest = include_value_digest(out);
-
      std::string raw = reply.to_raw();
 
-     if (includeValueDigest) {
-         Ripend160Hash hash;
-         hash.apply(raw.c_str(), raw.size());
-         value->set_raw(hash.data(), hash.size());
-     }
-     else {
+     if (include_value(out)) {
          value->set_raw(raw);
      }
 
@@ -290,7 +289,7 @@ void gkvs::RedisDriver::do_scan(const ScanOperation *request, ::grpc::ServerWrit
 
     if (tableName.empty()) {
         ValueResult result;
-        result.set_requestid(request->options().requestid());
+        result.mutable_header()->set_tag(request->header().tag());
         bad_request("empty table name", result.mutable_status());
         writer->WriteLast(result, grpc::WriteOptions());
         return;
@@ -328,7 +327,7 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, char* offset, int 
 
     if (scanReply.empty()) {
         ValueResult result;
-        result.set_requestid(request->options().requestid());
+        result.mutable_header()->set_tag(request->header().tag());
         driver_error("redis error", result.mutable_status());
         writer->WriteLast(result, grpc::WriteOptions());
         return false;
@@ -336,7 +335,7 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, char* offset, int 
 
     if (scanReply.is_error()) {
         ValueResult result;
-        result.set_requestid(request->options().requestid());
+        result.mutable_header()->set_tag(request->header().tag());
         error(scanReply.get(), result.mutable_status());
         writer->WriteLast(result, grpc::WriteOptions());
         return false;
@@ -344,7 +343,7 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, char* offset, int 
 
     if (scanReply.type() == REDIS_REPLY_STATUS) {
         ValueResult result;
-        result.set_requestid(request->options().requestid());
+        result.mutable_header()->set_tag(request->header().tag());
         status_error(scanReply.type(), scanReply.str(), result.mutable_status());
         writer->WriteLast(result, grpc::WriteOptions());
         return false;
@@ -352,7 +351,7 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, char* offset, int 
 
     if (scanReply.type() != REDIS_REPLY_ARRAY) {
         ValueResult result;
-        result.set_requestid(request->options().requestid());
+        result.mutable_header()->set_tag(request->header().tag());
         driver_error(scanReply.type(), "wrong reply type", result.mutable_status());
         writer->WriteLast(result, grpc::WriteOptions());
         return false;
@@ -362,7 +361,7 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, char* offset, int 
 
     if (scanArray != 2) {
         ValueResult result;
-        result.set_requestid(request->options().requestid());
+        result.mutable_header()->set_tag(request->header().tag());
         driver_error(scanReply.type(), "wrong scan array", result.mutable_status());
         writer->WriteLast(result, grpc::WriteOptions());
         return false;
@@ -371,7 +370,7 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, char* offset, int 
     redisReply* nextOffsetElement = scanReply.element(0);
     if (nextOffsetElement->type != REDIS_REPLY_STRING) {
         ValueResult result;
-        result.set_requestid(request->options().requestid());
+        result.mutable_header()->set_tag(request->header().tag());;
         driver_error(nextOffsetElement->type, "wrong next offset type", result.mutable_status());
         writer->WriteLast(result, grpc::WriteOptions());
         return false;
@@ -388,42 +387,20 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, char* offset, int 
         for (int i = 0; i < size; ++i) {
 
             ValueResult response;
-            response.set_requestid(request->options().requestid());
+            response.mutable_header()->set_tag(request->header().tag());
 
             redisReply *element = keysReply->element[i];
 
             if (element == nullptr || element->type == REDIS_REPLY_ERROR) {
                 error(element, response.mutable_status());
             } else {
-                metadata_result(-1, -1, &response);
+                metadata_result(nullptr, -1, &response);
                 key_result(redis_reply(element, false), response.mutable_key(), OutputOptions::KEY);
                 success(response.mutable_status());
             }
 
-            bool filtered = false;
-
-            if (request->has_bucket()) {
-                std::string key_raw = response.key().raw();
-
-                MurMur3 murmur3;
-                int hash = static_cast<int>(murmur3.hash32(key_raw));
-                if (hash < 0) {
-                    hash = -hash;
-                }
-
-                int bucket = hash % request->bucket().totalnum();
-
-                if (bucket != request->bucket().bucketnum()) {
-                    filtered = true;
-                }
-
-
-            }
-
-            if (!filtered) {
-                (*affected)++;
-                writer->Write(response, grpc::WriteOptions());
-            }
+            writer->Write(response, grpc::WriteOptions());
+            (*affected)++;
         }
     }
 
@@ -432,7 +409,7 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, char* offset, int 
 
 void gkvs::RedisDriver::do_get(const KeyOperation *request, ValueResult *response) {
 
-    response->set_requestid(request->options().requestid());
+    response->mutable_header()->set_tag(request->header().tag());
 
     if (!request->has_key()) {
         bad_request("no key", response->mutable_status());
@@ -458,7 +435,7 @@ void gkvs::RedisDriver::do_get(const KeyOperation *request, ValueResult *respons
 
     redis_reply reply;
 
-    if (request->output() == OutputOptions::METADATA_ONLY) {
+    if (request->output() == OutputOptions::METADATA) {
 
         reply = (redisReply *) redisCommand(context_, "TTL %b", key.c_str(), key.size());
 
@@ -476,11 +453,11 @@ void gkvs::RedisDriver::do_get(const KeyOperation *request, ValueResult *respons
         }
         else if (reply.number() == -1) {
             // exists with no TTL
-            metadata_result(-1, -1, response);
+            metadata_result(nullptr, -1, response);
             success(response->mutable_status());
         }
         else {
-            metadata_result(-1, reply.number(), response);
+            metadata_result(nullptr, reply.number(), response);
             success(response->mutable_status());
         }
 
@@ -502,7 +479,12 @@ void gkvs::RedisDriver::do_get(const KeyOperation *request, ValueResult *respons
         }
         else {
             std::string raw = value_result(reply, response->mutable_value(), request->output());
-            metadata_result(get_version(raw), -1, response);
+
+            MurMur3 murmur3;
+            uint64_t* cv = murmur3.hash128(raw);
+
+            metadata_result(cv, -1, response);
+
             success(response->mutable_status());
         }
 
@@ -512,7 +494,7 @@ void gkvs::RedisDriver::do_get(const KeyOperation *request, ValueResult *respons
 
 void gkvs::RedisDriver::do_put(const PutOperation *request, StatusResult *response) {
 
-    response->set_requestid(request->options().requestid());
+    response->mutable_header()->set_tag(request->header().tag());
 
     if (!request->has_key()) {
         bad_request("no key", response->mutable_status());
@@ -538,11 +520,6 @@ void gkvs::RedisDriver::do_put(const PutOperation *request, StatusResult *respon
         return;
     }
 
-    if (request->value().value_case() != Value::ValueCase::kRaw) {
-        bad_request("value must be raw", response->mutable_status());
-        return;
-    }
-
     const std::string& value = request->value().raw();
 
     bool updated = true;
@@ -551,7 +528,7 @@ void gkvs::RedisDriver::do_put(const PutOperation *request, StatusResult *respon
     int ttl = request->ttl();
     if (request->compareandput()) {
 
-        if (request->version() == 0) {
+        if (request->version_size() == 0) {
 
             /**
              * PutIfAbsent
@@ -576,10 +553,6 @@ void gkvs::RedisDriver::do_put(const PutOperation *request, StatusResult *respon
             }
 
         }
-        else if (request->version() == -1) {
-            bad_request("unknown version", response->mutable_status());
-            return;
-        }
         else {
 
             /**
@@ -594,9 +567,14 @@ void gkvs::RedisDriver::do_put(const PutOperation *request, StatusResult *respon
             }
 
             std::string raw = reply.to_raw();
-            uint64_t current_verison = get_version(raw);
 
-            if (current_verison != request->version()) {
+            MurMur3 murmur3;
+            uint64_t* cv = murmur3.hash128(raw);
+
+            uint64_t rv[2] = {0, 0};
+            bool got_ver = get_version(request, rv);
+
+            if (!got_ver || cv[0] != rv[0] || cv[1] != rv[1]) {
                 updated = false;
             }
             else {
@@ -650,7 +628,7 @@ void gkvs::RedisDriver::do_put(const PutOperation *request, StatusResult *respon
 
 void gkvs::RedisDriver::do_remove(const KeyOperation *request, StatusResult *response) {
 
-    response->set_requestid(request->options().requestid());
+    response->mutable_header()->set_tag(request->header().tag());
 
     if (!request->has_key()) {
         bad_request("no key", response->mutable_status());

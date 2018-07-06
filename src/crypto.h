@@ -55,7 +55,7 @@ namespace gkvs {
     private:
 
         uint32_t seed_;
-        uint64_t hash_[2]= {0};
+        uint64_t hash_[2] = {0, 0};
 
     };
 

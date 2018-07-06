@@ -95,26 +95,49 @@ namespace gkvs {
             as_config_init(&config);
             config.fail_if_not_connected = false;
 
-            namespace_ = conf["namespace"];
-            single_bin_ = conf["single-bin"].get<bool>();
+            namespace_ = "test";
+            single_bin_ = false;
 
-            json cluster = conf["cluster"];
+            auto hosts_it = conf.find("hosts");
 
-            std::string host = cluster["host"].get<std::string>();
-            int port = cluster["port"].get<int>();
+            if (hosts_it != conf.end() && hosts_it->is_array()) {
 
-            if (! as_config_add_hosts(&config, host.c_str(), (uint16_t) port)) {
-                LOG(ERROR) << "invalid host: " << host;
-                throw std::invalid_argument( "invalid host" );
+                json hosts = *hosts_it;
+
+                for (json::iterator server_it = hosts.begin(); server_it != hosts.end(); ++server_it) {
+
+                    json server = *server_it;
+
+                    auto host_it =  server.find("host");
+                    auto port_it = server.find("port");
+
+                    std::string host = host_it != server.end() ? host_it->get<std::string>() : "127.0.0.1";
+                    int port = port_it != server.end() ? port_it->get<int>() : 3000;
+
+                    LOG(INFO) << "Aerospike connect to " << host << ":" << port << std::endl;
+
+                    if (! as_config_add_hosts(&config, host.c_str(), (uint16_t) port)) {
+                        LOG(ERROR) << "invalid endpoint: " << host << ":" << port << std::endl;
+                    }
+
+                }
+
+
             }
 
-            std::string username = cluster["username"].get<std::string>();
-            std::string password = cluster["password"].get<std::string>();
+            auto user_it = conf.find("user");
+            auto pass_it = conf.find("password");
+
+            std::string username = user_it != conf.end() ? user_it->get<std::string>() : "";
+            std::string password = pass_it != conf.end() ? pass_it->get<std::string>() : "";
 
             as_config_set_user(&config, username.c_str(), password.c_str());
 
-            json tls = cluster["tls"];
-            if (!tls.is_null()) {
+            auto tls_it = conf.find("tls");
+            if (tls_it != conf.end()) {
+                json tls = *tls_it;
+
+                std::cout << "tls: " << tls << std::endl;
 
                 config.tls.enable = true;
                 config.tls.log_session_info = true;
@@ -140,7 +163,7 @@ namespace gkvs {
             as_error err;
 
             if (aerospike_connect(&as_, &err) != AEROSPIKE_OK) {
-                LOG(ERROR) << "aerospike_connect code: " << err.code << ", message:" << err.message << host;
+                LOG(ERROR) << "aerospike_connect code: " << err.code << ", message:" << err.message << std::endl;
                 throw std::invalid_argument( "aerospike_connect" );
             }
 
@@ -201,19 +224,18 @@ namespace gkvs {
         as_policy_key send_key_ = AS_POLICY_KEY_SEND;
         as_policy_replica replica_ = AS_POLICY_REPLICA_SEQUENCE;
         uint32_t min_concurrent_batch_size_ = 5;
-        RequestOptions default_options_;
         bool durable_delete_ = false;
         bool single_bin_ = false;
 
 
     protected:
 
-        void init_read_policy(const RequestOptions& op, as_policy_read* pol) {
+        void init_read_policy(uint32_t timeout, as_policy_read* pol) {
 
             as_policy_read_init(pol);
 
-            if (op.timeout() > 0) {
-                pol->base.total_timeout = static_cast<uint32_t>(op.timeout());
+            if (timeout > 0) {
+                pol->base.total_timeout = timeout;
             }
             pol->base.max_retries = max_retries_;
             pol->base.sleep_between_retries = sleep_between_retries_;
@@ -224,12 +246,12 @@ namespace gkvs {
         }
 
 
-        void init_write_policy(const RequestOptions& op, as_policy_write* pol) {
+        void init_write_policy(uint32_t timeout, as_policy_write* pol) {
 
             as_policy_write_init(pol);
 
-            if (op.timeout() > 0) {
-                pol->base.total_timeout = static_cast<uint32_t>(op.timeout());
+            if (timeout > 0) {
+                pol->base.total_timeout = timeout;
             }
             pol->base.max_retries = max_retries_;
             pol->base.sleep_between_retries = sleep_between_retries_;
@@ -241,12 +263,12 @@ namespace gkvs {
             pol->commit_level = commit_level_;
         }
 
-        void init_remove_policy(const RequestOptions& op, as_policy_remove* pol) {
+        void init_remove_policy(uint32_t timeout, as_policy_remove* pol) {
 
             as_policy_remove_init(pol);
 
-            if (op.timeout() > 0) {
-                pol->base.total_timeout = static_cast<uint32_t>(op.timeout());
+            if (timeout > 0) {
+                pol->base.total_timeout = timeout;
             }
             pol->base.max_retries = max_retries_;
             pol->base.sleep_between_retries = sleep_between_retries_;
@@ -257,12 +279,12 @@ namespace gkvs {
 
         }
 
-        void init_batch_policy(int totalTimeoutMillis, uint32_t actual_size, as_policy_batch* pol) {
+        void init_batch_policy(uint32_t totalTimeoutMillis, uint32_t actual_size, as_policy_batch* pol) {
 
             as_policy_batch_init(pol);
 
             if (totalTimeoutMillis > 0) {
-                pol->base.total_timeout = static_cast<uint32_t>(totalTimeoutMillis);
+                pol->base.total_timeout = totalTimeoutMillis;
             }
 
             pol->base.max_retries = max_retries_;
@@ -392,7 +414,7 @@ namespace gkvs {
 
             Metadata* meta = result->mutable_metadata();
 
-            meta->set_version(rec->gen);
+            meta->add_version(rec->gen);
             meta->set_ttl(rec->ttl);
 
         }
@@ -447,20 +469,11 @@ namespace gkvs {
                 return;
             }
 
-            bool includeValueDigest = include_value_digest(out);
-
             as_record_ser ser;
 
             size_t pos = ser.pack_record(rec, single_bin_);
 
-            if (includeValueDigest) {
-                Ripend160Hash hash;
-                hash.apply(ser.data(), ser.size());
-                result->mutable_value()->set_raw(hash.data(), hash.size());
-            }
-            else {
-                result->mutable_value()->set_raw(ser.data(), ser.size());
-            }
+            result->mutable_value()->set_raw(ser.data(), ser.size());
 
         }
 
@@ -577,13 +590,13 @@ static gkvs::StatusCode parse_aerospike_status(as_status status) {
 
         case AEROSPIKE_NO_MORE_RECORDS:
         case AEROSPIKE_QUERY_END:
-            return gkvs::StatusCode::ERROR_INTERNAL;
+            return gkvs::StatusCode::ERROR_END_CQ;
 
         case AEROSPIKE_ERR_RECORD_GENERATION:
             return gkvs::StatusCode::SUCCESS_NOT_UPDATED;
 
         case AEROSPIKE_ERR_NAMESPACE_NOT_FOUND:
-            return gkvs::StatusCode::ERROR_RES_NOT_FOUND;
+            return gkvs::StatusCode::ERROR_RESOURCE;
 
         case AEROSPIKE_ERR_RECORD_KEY_MISMATCH:
         case AEROSPIKE_ERR_GEO_INVALID_GEOJSON:
@@ -711,7 +724,7 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
 
         if (!operation.has_key()) {
             ValueResult *result = response->add_result();
-            result->set_requestid(operation.options().requestid());
+            result->mutable_header()->set_tag(operation.header().tag());
             bad_request("empty key", result->mutable_status());
             continue;
         }
@@ -719,19 +732,19 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
         StatusErr statusErr;
         if (!valid_key(operation.key(), statusErr)) {
             ValueResult *result = response->add_result();
-            result->set_requestid(operation.options().requestid());
+            result->mutable_header()->set_tag(operation.header().tag());
             statusErr.to_status(result->mutable_status());
             continue;
         }
 
-        if (operation.has_options() && operation.options().timeout() > max_timeout) {
-            max_timeout = operation.options().timeout();
+        if (operation.has_header() && operation.header().timeout() > max_timeout) {
+            max_timeout = operation.header().timeout();
         }
 
         as_key *key = as_batch_keyat(&batch, actual_size);
         if (!init_key(operation.key(), *key, statusErr)) {
             ValueResult *result = response->add_result();
-            result->set_requestid(operation.options().requestid());
+            result->mutable_header()->set_tag(operation.header().tag());
             statusErr.to_status(result->mutable_status());
             continue;
         }
@@ -806,7 +819,7 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
 
         if (operation) {
             // for client identification purpose
-            result->set_requestid(operation->options().requestid());
+            result->mutable_header()->set_tag(operation->header().tag());
             key_result(operation->key(), result, operation->output());
         }
         else {
@@ -826,7 +839,7 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
                 value_result(const_cast<as_record *>(rec), result, operation->output());
             }
             else {
-                value_result(const_cast<as_record *>(rec), result, OutputOptions::VALUE_RAW);
+                value_result(const_cast<as_record *>(rec), result, OutputOptions::VALUE);
             }
 
             success(result->mutable_status());
@@ -854,7 +867,7 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc
 
     if (tableName.empty()) {
         ValueResult result;
-        result.set_requestid(request->options().requestid());
+        result.mutable_header()->set_tag(request->header().tag());
         bad_request("empty table name", result.mutable_status());
         writer->WriteLast(result, grpc::WriteOptions());
         return;
@@ -863,70 +876,32 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc
     as_error err;
     scan_context context { this, writer, request };
 
-    if (request->has_bucket()) {
+    as_scan scan;
+    as_scan_init(&scan, namespace_.c_str(), tableName.c_str());
+    scan.deserialize_list_map = false;
 
-        as_query query;
-        as_query_init(&query, namespace_.c_str(), tableName.c_str());
-
-        if (!include_value(request->output())) {
-            query.no_bins = true;
-        }
-
-        if (request->has_select()) {
-            uint16_t len = static_cast<uint16_t>(request->select().column().size());
-            as_query_select_init(&query, len);
-
-            for (auto &col : request->select().column()) {
-                as_query_select(&query, col.c_str());
-            }
-
-        }
-
-        const Bucket& bucket = request->bucket();
-        as_query_predexp_init(&query, 3);
-        as_query_predexp_add(&query, as_predexp_rec_digest_modulo(bucket.totalnum()));
-        as_query_predexp_add(&query, as_predexp_integer_value(bucket.bucketnum()));
-        as_query_predexp_add(&query, as_predexp_integer_equal());
-
-        as_policy_query pol;
-        init_query_policy(&pol);
-
-        aerospike_query_foreach(&as_, &err, &pol, &query, static_scan_callback, &context);
-
-        as_query_destroy(&query);
-
+    if (!include_value(request->output())) {
+        as_scan_set_nobins(&scan, true);
     }
-    else {
 
-        as_scan scan;
-        as_scan_init(&scan, namespace_.c_str(), tableName.c_str());
-        scan.deserialize_list_map = false;
+    scan.priority = AS_SCAN_PRIORITY_LOW;
 
-        if (!include_value(request->output())) {
-            as_scan_set_nobins(&scan, true);
+    if (request->has_select()) {
+        uint16_t len = static_cast<uint16_t>(request->select().column().size());
+        as_scan_select_init(&scan, len);
+
+        for (auto &col : request->select().column()) {
+            as_scan_select(&scan, col.c_str());
         }
-
-        scan.priority = AS_SCAN_PRIORITY_LOW;
-
-        if (request->has_select()) {
-            uint16_t len = static_cast<uint16_t>(request->select().column().size());
-            as_scan_select_init(&scan, len);
-
-            for (auto &col : request->select().column()) {
-                as_scan_select(&scan, col.c_str());
-            }
-
-        }
-
-        as_policy_scan pol;
-        init_scan_policy(&pol);
-
-        aerospike_scan_foreach(&as_, &err, &pol, &scan, static_scan_callback, &context);
-
-        as_scan_destroy(&scan);
 
     }
 
+    as_policy_scan pol;
+    init_scan_policy(&pol);
+
+    aerospike_scan_foreach(&as_, &err, &pol, &scan, static_scan_callback, &context);
+
+    as_scan_destroy(&scan);
 
 }
 
@@ -947,7 +922,7 @@ bool gkvs::AerospikeDriver::scan_callback(const as_val* val, scan_context* conte
     as_record* rec = as_record_fromval(val);
     if (rec) {
 
-        result.set_requestid(operation->options().requestid());
+        result.mutable_header()->set_tag(operation->header().tag());
         success(result.mutable_status());
         metadata_result(rec, &result);
         key_result(&rec->key, &result, operation->output());
@@ -965,7 +940,7 @@ bool gkvs::AerospikeDriver::scan_callback(const as_val* val, scan_context* conte
 void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::ValueResult *response) {
 
     // for client identification purpose
-    response->set_requestid(request->options().requestid());
+    response->mutable_header()->set_tag(request->header().tag());
 
     if (!request->has_key()) {
         bad_request("no key", response->mutable_status());
@@ -988,8 +963,10 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::
         return;
     }
 
+    uint32_t timeout = request->has_header() ? request->header().timeout() : 0;
+
     as_policy_read pol;
-    init_read_policy(request->has_options() ? request->options() : default_options_, &pol);
+    init_read_policy(timeout, &pol);
 
     as_record* rec = nullptr;
     as_error err;
@@ -1041,7 +1018,8 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::
 
 void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::StatusResult *response) {
 
-    response->set_requestid(request->options().requestid());
+    // for client identification purpose
+    response->mutable_header()->set_tag(request->header().tag());
 
     if (!request->has_key()) {
         bad_request("no key", response->mutable_status());
@@ -1063,11 +1041,6 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
 
     const Value& val = request->value();
 
-    if (val.value_case() != Value::ValueCase::kRaw) {
-        bad_request("value must be raw", response->mutable_status());
-        return;
-    }
-
     gkvs::as_record_ser record_ser;
     as_record* rec = record_ser.unpack_record(val.raw(), single_bin_);
 
@@ -1076,8 +1049,10 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
         return;
     }
 
+    uint32_t timeout = request->has_header() ? request->header().timeout() : 0;
+
     as_policy_write pol;
-    init_write_policy(request->has_options() ? request->options() : default_options_, &pol);
+    init_write_policy(timeout, &pol);
 
     int ttl = request->ttl();
     if (ttl > 0) {
@@ -1092,7 +1067,12 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
     // set version for CompareAndPut
     if (request->compareandput()) {
         pol.gen = AS_POLICY_GEN_EQ;
-        rec->gen = static_cast<uint16_t>(request->version());
+        if (request->version_size() >= 1) {
+            rec->gen = static_cast<uint16_t>(request->version(0));
+        }
+        else {
+            rec->gen = 0;
+        }
     }
     else {
         pol.gen = AS_POLICY_GEN_IGNORE;
@@ -1120,7 +1100,8 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
 
 void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkvs::StatusResult *response) {
 
-    response->set_requestid(request->options().requestid());
+    // for client identification purpose
+    response->mutable_header()->set_tag(request->header().tag());
 
     if (!request->has_key()) {
         bad_request("no key", response->mutable_status());
@@ -1144,8 +1125,10 @@ void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkv
 
     if (request->has_select()) {
 
+        uint32_t timeout = request->has_header() ? request->header().timeout() : 0;
+
         as_policy_write pol;
-        init_write_policy(request->has_options() ? request->options() : default_options_, &pol);
+        init_write_policy(timeout, &pol);
 
         const Select& select = request->select();
 
@@ -1166,8 +1149,10 @@ void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkv
 
         // remove the whole record
 
+        uint32_t timeout = request->has_header() ? request->header().timeout() : 0;
+
         as_policy_remove pol;
-        init_remove_policy(request->has_options() ? request->options() : default_options_, &pol);
+        init_remove_policy(timeout, &pol);
 
         status = aerospike_key_remove(&as_, &err, &pol, &key);
 

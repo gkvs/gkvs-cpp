@@ -249,7 +249,18 @@ std::shared_ptr<gkvs::Driver> create_driver(const std::string& content) {
 
     gkvs::Driver *driver = nullptr;
 
-    json conf = nlohmann::json::parse(content.begin(), content.end());
+    json conf;
+
+    try {
+        conf = nlohmann::json::parse(content.begin(), content.end());
+    }
+    catch(std::exception e) {
+        LOG(ERROR) << "failed to parse config: " << content << std::endl;
+        return std::shared_ptr<gkvs::Driver>(nullptr);
+    }
+
+
+    LOG(INFO) << "ADD CLUSTER: " << conf << std::endl;
 
     std::string name = conf["name"].get<std::string>();
     std::string driver_name = conf["driver"].get<std::string>();
@@ -324,6 +335,11 @@ void RunServer(const std::string& filename) {
     std::string content = gkvs::get_file_content(filename);
 
     std::shared_ptr<gkvs::Driver> driver = create_driver(content);
+
+    if (driver.get() == nullptr) {
+        return;
+    }
+
     std::shared_ptr<grpc::ServerCredentials> creds = create_server_credentials();
 
     build_sync_server(driver, creds);

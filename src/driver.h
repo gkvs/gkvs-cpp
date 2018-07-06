@@ -158,23 +158,8 @@ namespace gkvs {
         inline bool include_value(const OutputOptions &out) {
 
             switch(out) {
-                case VALUE_RAW:
-                case VALUE_DIGEST:
-                case KEY_VALUE_RAW:
-                case KEY_VALUE_DIGEST:
-                    return true;
-                default:
-                    break;
-            }
-
-            return false;
-        }
-
-        inline bool include_value_digest(const OutputOptions &out) {
-
-            switch(out) {
-                case VALUE_DIGEST:
-                case KEY_VALUE_DIGEST:
+                case VALUE:
+                case KEYVALUE:
                     return true;
                 default:
                     break;
@@ -187,8 +172,7 @@ namespace gkvs {
 
             switch(out) {
                 case KEY:
-                case KEY_VALUE_RAW:
-                case KEY_VALUE_DIGEST:
+                case KEYVALUE:
                     return true;
                 default:
                     break;

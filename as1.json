@@ -1,0 +1,17 @@
+{
+
+  "name": "as1",
+  "driver": "aerospike",
+
+  "config": {
+    "hosts": [
+      {
+        "host": "192.168.56.101",
+        "port": 3000
+      }
+    ],
+    "user": "",
+    "password": ""
+  }
+
+}
