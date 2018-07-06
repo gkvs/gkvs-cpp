@@ -114,6 +114,12 @@ namespace gkvs {
             status->set_errormessage(errorMessage);
         }
 
+        void status_error(int code, const char* errorMessage, Status *status) {
+            status->set_code(StatusCode::ERROR_ABORTED);
+            status->set_errorcode(code);
+            status->set_errormessage(errorMessage);
+        }
+
         void driver_error(const char* errorMessage, Status *status) {
             driver_error(-1, errorMessage, status);
         }

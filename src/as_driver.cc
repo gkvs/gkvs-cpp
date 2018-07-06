@@ -405,31 +405,6 @@ namespace gkvs {
 
         }
 
-        void value_result(as_record *rec, ValueResult *result, const OutputOptions &out) {
-
-            bool includeValue = include_value(out);
-
-            if (!includeValue) {
-                return;
-            }
-
-            bool includeValueDigest = include_value_digest(out);
-
-            as_record_ser ser;
-
-            size_t pos = ser.pack_record(rec, single_bin_);
-
-            if (includeValueDigest) {
-                Ripend160Hash hash;
-                hash.apply(ser.data(), ser.size());
-                result->mutable_value()->set_raw(hash.data(), hash.size());
-            }
-            else {
-                result->mutable_value()->set_raw(ser.data(), ser.size());
-            }
-
-        }
-
         void key_result(as_key* key, ValueResult *result, const OutputOptions &out) {
 
             if (!include_key(out)) {
@@ -460,6 +435,31 @@ namespace gkvs {
                     res->set_digest(key->digest.value, AS_DIGEST_VALUE_SIZE);
                 }
 
+            }
+
+        }
+
+        void value_result(as_record *rec, ValueResult *result, const OutputOptions &out) {
+
+            bool includeValue = include_value(out);
+
+            if (!includeValue) {
+                return;
+            }
+
+            bool includeValueDigest = include_value_digest(out);
+
+            as_record_ser ser;
+
+            size_t pos = ser.pack_record(rec, single_bin_);
+
+            if (includeValueDigest) {
+                Ripend160Hash hash;
+                hash.apply(ser.data(), ser.size());
+                result->mutable_value()->set_raw(hash.data(), hash.size());
+            }
+            else {
+                result->mutable_value()->set_raw(ser.data(), ser.size());
             }
 
         }
@@ -853,8 +853,8 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc
     const std::string& tableName = request->tablename();
 
     if (tableName.empty()) {
-
         ValueResult result;
+        result.set_requestid(request->options().requestid());
         bad_request("empty table name", result.mutable_status());
         writer->WriteLast(result, grpc::WriteOptions());
         return;

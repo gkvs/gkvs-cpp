@@ -28,6 +28,38 @@
 
 namespace gkvs {
 
+    class MurMur3 final {
+
+    public:
+
+        explicit MurMur3() {
+            seed_ = -1;
+        }
+
+        explicit MurMur3(uint32_t seed) {
+            seed_ = seed;
+        }
+
+        uint32_t  hash32(const std::string& str) {
+            return hash32(str.c_str(), str.size());
+        }
+
+        uint32_t hash32(const void * key, int len);
+
+        uint64_t* hash128(const std::string& str) {
+            return hash128(str.c_str(), str.size());
+        }
+
+        uint64_t* hash128(const void * key, int len);
+
+    private:
+
+        uint32_t seed_;
+        uint64_t hash_[2]= {0};
+
+    };
+
+
     class Ripend160Hash final {
 
     public:

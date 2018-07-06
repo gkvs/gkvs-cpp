@@ -43,7 +43,7 @@ namespace gkvs {
 
             LOG(INFO) << "Redis connect to " << hostname_ << ":" << port_ << std::endl;
 
-            context_ = redisConnectNonBlock(hostname_.c_str(), port_);
+            context_ = redisConnect(hostname_.c_str(), port_);
 
             if (context_ == nullptr || context_->err) {
                 if (context_) {
@@ -113,6 +113,8 @@ namespace gkvs {
 
         void do_scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer);
 
+        bool do_scan(const ScanOperation *request, char* offset, int offset_size, int limit, int* affected, ::grpc::ServerWriter<ValueResult> *writer);
+
         void do_get(const KeyOperation *request, ValueResult *response);
 
         void do_put(const PutOperation *request, StatusResult *response);
@@ -125,13 +127,40 @@ namespace gkvs {
             status->set_errormessage(reply->str);
         }
 
-        void value_result(redisReply *reply, gkvs::Value *value, const OutputOptions &out);
+        void key_result(const Key& key, ValueResult *result, const OutputOptions &out) {
 
-        inline bool is_error(redisReply *reply) {
-            return reply->type == REDIS_REPLY_ERROR;
+            if (include_key(out)) {
+                result->mutable_key()->CopyFrom(key);
+            }
+
         }
 
-        inline std::string parse_redis_value(redisReply *reply);
+        int64_t get_version(std::string raw) {
+
+            MurMur3 murmur3;
+            uint64_t* out = murmur3.hash128(raw.c_str(), raw.size());
+
+            int64_t h = static_cast<int64_t>(out[0] ^ out[1]);
+
+            // all positive
+            if (h < 0) {
+                h = -h;
+            }
+
+            return h == 0 ? 1 : h;
+        }
+
+        void metadata_result(int64_t version, int ttl, ValueResult *result) {
+
+            Metadata *meta = result->mutable_metadata();
+            meta->set_version(version);
+            meta->set_ttl(ttl);
+
+        }
+
+        void key_result(const redis_reply& reply, gkvs::Key* key, const OutputOptions &out);
+
+        std::string value_result(const redis_reply& reply, gkvs::Value *value, const OutputOptions &out);
 
     };
 
@@ -143,16 +172,9 @@ namespace gkvs {
 
 }
 
-inline std::string gkvs::RedisDriver::parse_redis_value(redisReply *reply) {
+const redisReply gkvs::redis_reply::null_reply_ = { REDIS_REPLY_ERROR, 0, 0, (char*) "redis error null", 0, {} };
 
-    if (reply->type == REDIS_REPLY_ARRAY) {
-        return std::string(reply->str, reply->len);
-    }
-
-    msgpack_sbuffer sbuf;
-    msgpack_packer pk;
-    msgpack_sbuffer_init(&sbuf);
-    msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
+void gkvs::redis_reply::pack_redis_value(msgpack_packer& pk, const redisReply *reply) {
 
     switch(reply->type) {
 
@@ -171,8 +193,14 @@ inline std::string gkvs::RedisDriver::parse_redis_value(redisReply *reply) {
             msgpack_pack_int64(&pk, reply->integer);
             break;
 
-        case REDIS_REPLY_ARRAY:
+        case REDIS_REPLY_ARRAY: {
+            int size = reply->elements;
+            msgpack_pack_array(&pk, size);
+            for (int i = 0; i < size; ++i) {
+                pack_redis_value(pk, reply->element[i]);
+            }
             break;
+        }
 
         default:
             msgpack_pack_nil(&pk);
@@ -180,41 +208,72 @@ inline std::string gkvs::RedisDriver::parse_redis_value(redisReply *reply) {
 
     }
 
+}
+
+std::string gkvs::redis_reply::pack_redis_value(const redisReply *reply) {
+
+    msgpack_sbuffer sbuf;
+    msgpack_packer pk;
+    msgpack_sbuffer_init(&sbuf);
+    msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
+
+    pack_redis_value(pk, reply);
+
     std::string result(sbuf.data, sbuf.size);
     msgpack_sbuffer_destroy(&sbuf);
     return result;
 }
 
- void gkvs::RedisDriver::value_result(redisReply *reply, gkvs::Value *value, const OutputOptions &out) {
+void gkvs::RedisDriver::key_result(const redis_reply& reply, gkvs::Key* key, const OutputOptions &out) {
+
+    bool includeKey = include_key(out);
+
+    if (includeKey) {
+
+        std::string raw = reply.to_raw();
+
+        size_t delim = raw.find(':', 0);
+        if (delim == -1 || delim + 1 >= raw.size()) {
+            key->set_raw(raw);
+        }
+        else {
+            key->set_tablename(raw.substr(0, delim));
+            size_t pos = delim + 1;
+            key->set_raw(raw.substr(pos, raw.size() - pos));
+        }
+
+    }
+
+}
+
+std::string gkvs::RedisDriver::value_result(const redis_reply& reply, gkvs::Value *value, const OutputOptions &out) {
 
      bool includeValue = include_value(out);
 
      if (!includeValue) {
-         return;
+         return reply.to_raw();
      }
 
      bool includeValueDigest = include_value_digest(out);
 
-     std::string ser = parse_redis_value(reply);
+     std::string raw = reply.to_raw();
 
      if (includeValueDigest) {
          Ripend160Hash hash;
-         hash.apply(ser.data(), ser.size());
+         hash.apply(raw.c_str(), raw.size());
          value->set_raw(hash.data(), hash.size());
      }
      else {
-         value->set_raw(ser.data(), ser.size());
+         value->set_raw(raw);
      }
+
+     return raw;
 
 }
 
 void gkvs::RedisDriver::do_multi_get(const BatchKeyOperation *request, BatchValueResult *response) {
 
     int size = request->operation_size();
-
-    if (size == 0) {
-        return;
-    }
 
     for (int i = 0; i < size; ++i) {
 
@@ -227,57 +286,148 @@ void gkvs::RedisDriver::do_multi_get(const BatchKeyOperation *request, BatchValu
 
 void gkvs::RedisDriver::do_scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer) {
 
-    redisReply *keysReply = (redisReply *) redisCommand(context_, "KEYS *");
+    const std::string &tableName = request->tablename();
 
-    if (!keysReply) {
-        ValueResult response;
-        driver_error("redis error", response.mutable_status());
-        writer->WriteLast(response, grpc::WriteOptions());
+    if (tableName.empty()) {
+        ValueResult result;
+        result.set_requestid(request->options().requestid());
+        bad_request("empty table name", result.mutable_status());
+        writer->WriteLast(result, grpc::WriteOptions());
         return;
     }
 
-    if (is_error(keysReply)) {
-        ValueResult response;
-        error(keysReply, response.mutable_status());
-        writer->WriteLast(response, grpc::WriteOptions());
-        return;
-    }
+    int limit = 1000;
+    char offset[255];
+    strcpy(offset, "0");
+    while(true) {
 
-    if (keysReply->type != REDIS_REPLY_ARRAY) {
-        ValueResult response;
-        driver_error(keysReply->type, "wrong reply type", response.mutable_status());
-        writer->WriteLast(response, grpc::WriteOptions());
-        return;
-    }
+        int affected = 0;
 
-    grpc::WriteOptions writeOptions = grpc::WriteOptions();
-
-    int size = keysReply->elements;
-    for(int i = 0; i < size; ++i) {
-
-        ValueResult response;
-
-        redisReply * element = keysReply->element[i];
-
-        if (is_error(element)) {
-            error(element, response.mutable_status());
-        }
-        else {
-            value_result(element, response.mutable_value(), request->output());
-            success(response.mutable_status());
+        if (!do_scan(request, offset, sizeof(offset), limit, &affected, writer)) {
+            break;
         }
 
-        if (i + 1 == size) {
-            writeOptions = writeOptions.set_last_message();
+        if (strncmp("0", offset, sizeof(offset)) == 0) {
+            break;
         }
 
-        writer->Write(response, writeOptions);
+        if (affected < 1000) {
+            limit = limit * 2;
+        }
 
     }
 
-    freeReplyObject(keysReply);
+}
+
+bool gkvs::RedisDriver::do_scan(const ScanOperation *request, char* offset, int offset_size, int limit, int *affected, ::grpc::ServerWriter<ValueResult> *writer) {
+
+    *affected = 0;
+
+    redis_reply scanReply;
+    scanReply = (redisReply *) redisCommand(context_, "SCAN %s MATCH %s:* COUNT %i", offset, request->tablename().c_str(), limit);
+
+    if (scanReply.empty()) {
+        ValueResult result;
+        result.set_requestid(request->options().requestid());
+        driver_error("redis error", result.mutable_status());
+        writer->WriteLast(result, grpc::WriteOptions());
+        return false;
+    }
+
+    if (scanReply.is_error()) {
+        ValueResult result;
+        result.set_requestid(request->options().requestid());
+        error(scanReply.get(), result.mutable_status());
+        writer->WriteLast(result, grpc::WriteOptions());
+        return false;
+    }
+
+    if (scanReply.type() == REDIS_REPLY_STATUS) {
+        ValueResult result;
+        result.set_requestid(request->options().requestid());
+        status_error(scanReply.type(), scanReply.str(), result.mutable_status());
+        writer->WriteLast(result, grpc::WriteOptions());
+        return false;
+    }
+
+    if (scanReply.type() != REDIS_REPLY_ARRAY) {
+        ValueResult result;
+        result.set_requestid(request->options().requestid());
+        driver_error(scanReply.type(), "wrong reply type", result.mutable_status());
+        writer->WriteLast(result, grpc::WriteOptions());
+        return false;
+    }
+
+    int scanArray = scanReply.elements();
+
+    if (scanArray != 2) {
+        ValueResult result;
+        result.set_requestid(request->options().requestid());
+        driver_error(scanReply.type(), "wrong scan array", result.mutable_status());
+        writer->WriteLast(result, grpc::WriteOptions());
+        return false;
+    }
+
+    redisReply* nextOffsetElement = scanReply.element(0);
+    if (nextOffsetElement->type != REDIS_REPLY_STRING) {
+        ValueResult result;
+        result.set_requestid(request->options().requestid());
+        driver_error(nextOffsetElement->type, "wrong next offset type", result.mutable_status());
+        writer->WriteLast(result, grpc::WriteOptions());
+        return false;
+    }
+
+    strncpy(offset, nextOffsetElement->str, offset_size);
+
+    redisReply* keysReply = scanReply.element(1);
+
+    if (keysReply != nullptr && keysReply->type == REDIS_REPLY_ARRAY) {
+
+        int size = keysReply->elements;
+
+        for (int i = 0; i < size; ++i) {
+
+            ValueResult response;
+            response.set_requestid(request->options().requestid());
+
+            redisReply *element = keysReply->element[i];
+
+            if (element == nullptr || element->type == REDIS_REPLY_ERROR) {
+                error(element, response.mutable_status());
+            } else {
+                metadata_result(-1, -1, &response);
+                key_result(redis_reply(element, false), response.mutable_key(), OutputOptions::KEY);
+                success(response.mutable_status());
+            }
+
+            bool filtered = false;
+
+            if (request->has_bucket()) {
+                std::string key_raw = response.key().raw();
+
+                MurMur3 murmur3;
+                int hash = static_cast<int>(murmur3.hash32(key_raw));
+                if (hash < 0) {
+                    hash = -hash;
+                }
+
+                int bucket = hash % request->bucket().totalnum();
+
+                if (bucket != request->bucket().bucketnum()) {
+                    filtered = true;
+                }
 
 
+            }
+
+            if (!filtered) {
+                (*affected)++;
+                writer->Write(response, grpc::WriteOptions());
+            }
+        }
+    }
+
+    return true;
 }
 
 void gkvs::RedisDriver::do_get(const KeyOperation *request, ValueResult *response) {
@@ -289,33 +439,74 @@ void gkvs::RedisDriver::do_get(const KeyOperation *request, ValueResult *respons
         return;
     }
 
+    // for client identification purpose
+    key_result(request->key(), response, request->output());
+
+    const std::string& tableName = request->key().tablename();
+
+    if (tableName.empty()) {
+        bad_request("empty table name", response->mutable_status());
+        return;
+    }
+
     if (request->key().recordKey_case() != Key::RecordKeyCase::kRaw) {
         bad_request("key must be raw", response->mutable_status());
         return;
     }
 
-    const std::string& key = request->key().raw();
+    std::string key = tableName + ":" + request->key().raw();
 
-    redisReply *reply = nullptr;
+    redis_reply reply;
 
-    reply = (redisReply *) redisCommand(context_, "GET %b", key.c_str(), key.size());
+    if (request->output() == OutputOptions::METADATA_ONLY) {
 
-    if (!reply) {
-        driver_error("redis error", response->mutable_status());
-        return;
-    }
+        reply = (redisReply *) redisCommand(context_, "TTL %b", key.c_str(), key.size());
 
-    if (reply->type == REDIS_REPLY_ERROR) {
-        error(reply, response->mutable_status());
+        if (reply.empty()) {
+            driver_error("redis error", response->mutable_status());
+            return;
+        }
+
+        if (!reply.is_number()) {
+            error(reply.get(), response->mutable_status());
+        }
+        else if (reply.number() == -2) {
+            // not exists
+            success(response->mutable_status());
+        }
+        else if (reply.number() == -1) {
+            // exists with no TTL
+            metadata_result(-1, -1, response);
+            success(response->mutable_status());
+        }
+        else {
+            metadata_result(-1, reply.number(), response);
+            success(response->mutable_status());
+        }
+
     }
     else {
+        reply = (redisReply *) redisCommand(context_, "GET %b", key.c_str(), key.size());
 
-        value_result(reply, response->mutable_value(), request->output());
+        if (reply.empty()) {
+            driver_error("redis error", response->mutable_status());
+            return;
+        }
 
-        success(response->mutable_status());
+        if (reply.is_error()) {
+            error(reply.get(), response->mutable_status());
+        }
+        else if (reply.type() == REDIS_REPLY_NIL) {
+            // not found
+            success(response->mutable_status());
+        }
+        else {
+            std::string raw = value_result(reply, response->mutable_value(), request->output());
+            metadata_result(get_version(raw), -1, response);
+            success(response->mutable_status());
+        }
+
     }
-
-    freeReplyObject(reply);
 
 }
 
@@ -333,7 +524,14 @@ void gkvs::RedisDriver::do_put(const PutOperation *request, StatusResult *respon
         return;
     }
 
-    const std::string& key = request->key().raw();
+    const std::string& tableName = request->key().tablename();
+
+    if (tableName.empty()) {
+        bad_request("empty table name", response->mutable_status());
+        return;
+    }
+
+    std::string key = tableName + ":" + request->key().raw();
 
     if (!request->has_value()) {
         bad_request("no value", response->mutable_status());
@@ -347,23 +545,106 @@ void gkvs::RedisDriver::do_put(const PutOperation *request, StatusResult *respon
 
     const std::string& value = request->value().raw();
 
-    redisReply *reply = nullptr;
+    bool updated = true;
+    redis_reply reply;
 
-    reply = (redisReply *) redisCommand(context_, "SET %b %b", key.c_str(), key.size(), value.c_str(), value.size());
+    int ttl = request->ttl();
+    if (request->compareandput()) {
 
-    if (!reply) {
+        if (request->version() == 0) {
+
+            /**
+             * PutIfAbsent
+             */
+
+            reply = (redisReply *) redisCommand(context_, "SETNX %b %b", key.c_str(), key.size(), value.c_str(), value.size());
+
+            if (reply.empty()) {
+                driver_error("redis error", response->mutable_status());
+                return;
+            }
+
+            if (!reply.is_number()) {
+                driver_error("expected number for SETNX", response->mutable_status());
+                return;
+            }
+
+            updated = reply.number() == 1;
+
+            if (updated && ttl > 0) {
+                reply = (redisReply *) redisCommand(context_, "EXPIRE %b %i", key.c_str(), key.size(), ttl);
+            }
+
+        }
+        else if (request->version() == -1) {
+            bad_request("unknown version", response->mutable_status());
+            return;
+        }
+        else {
+
+            /**
+             * Replace
+             */
+
+            reply = (redisReply *) redisCommand(context_, "GET %b", key.c_str(), key.size());
+
+            if (reply.empty()) {
+                driver_error("redis error", response->mutable_status());
+                return;
+            }
+
+            std::string raw = reply.to_raw();
+            uint64_t current_verison = get_version(raw);
+
+            if (current_verison != request->version()) {
+                updated = false;
+            }
+            else {
+
+                if (ttl > 0) {
+                    reply = (redisReply *) redisCommand(context_, "SETEX %b %i %b", key.c_str(), key.size(), ttl, value.c_str(), value.size());
+                }
+                else {
+                    reply = (redisReply *) redisCommand(context_, "SET %b %b", key.c_str(), key.size(), value.c_str(), value.size());
+                }
+
+            }
+
+        }
+
+    }
+    else if (ttl > 0) {
+
+        /**
+         * PutWithTTL
+         */
+
+        reply = (redisReply *) redisCommand(context_, "SETEX %b %i %b", key.c_str(), key.size(), ttl, value.c_str(), value.size());
+    }
+    else {
+
+        /**
+         * Put
+         */
+
+        reply = (redisReply *) redisCommand(context_, "SET %b %b", key.c_str(), key.size(), value.c_str(), value.size());
+    }
+
+    if (reply.empty()) {
         driver_error("redis error", response->mutable_status());
         return;
     }
 
-    if (reply->type == REDIS_REPLY_ERROR) {
-        error(reply, response->mutable_status());
+    if (reply.is_error()) {
+        error(reply.get(), response->mutable_status());
     }
-    else {
+    else if (updated) {
         success(response->mutable_status());
     }
+    else {
+        success_not_updated(response->mutable_status());
+    }
 
-    freeReplyObject(reply);
 
 }
 
@@ -381,24 +662,32 @@ void gkvs::RedisDriver::do_remove(const KeyOperation *request, StatusResult *res
         return;
     }
 
-    const std::string& key = request->key().raw();
+    const std::string& tableName = request->key().tablename();
 
-    redisReply *reply = nullptr;
+    if (tableName.empty()) {
+        bad_request("empty table name", response->mutable_status());
+        return;
+    }
 
+    std::string key = tableName + ":" + request->key().raw();
+
+    redis_reply reply;
     reply = (redisReply *) redisCommand(context_, "DEL %b", key.c_str(), key.size());
 
-    if (!reply) {
+    if (reply.empty()) {
         driver_error("redis error", response->mutable_status());
         return;
     }
 
-    if (reply->type == REDIS_REPLY_ERROR) {
-        error(reply, response->mutable_status());
+    if (reply.is_error()) {
+        error(reply.get(), response->mutable_status());
     }
-    else {
+    else if (reply.is_number() && reply.number() > 0) {
         success(response->mutable_status());
     }
+    else {
+        success_not_updated(response->mutable_status());
+    }
 
-    freeReplyObject(reply);
 
 }
