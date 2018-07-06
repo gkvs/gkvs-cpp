@@ -1064,6 +1064,16 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
         pol.key = AS_POLICY_KEY_SEND;
     }
 
+    switch(request->policy()) {
+        case REPLACE:
+            pol.exists = AS_POLICY_EXISTS_CREATE_OR_REPLACE;
+            break;
+        case MERGE:
+        default:
+            pol.exists = AS_POLICY_EXISTS_IGNORE;
+            break;
+    }
+
     // set version for CompareAndPut
     if (request->compareandput()) {
         pol.gen = AS_POLICY_GEN_EQ;
