@@ -10,3 +10,4 @@ sudo apt-get install ncurses-dev liblua5.1-dev
 sudo apt-get install libgflags-dev libgtest-dev
 sudo apt-get install clang libc++-dev g++
 
+sudo apt-get install libsnappy-dev

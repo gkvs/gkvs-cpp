@@ -18,6 +18,12 @@
 
 #pragma once
 
+#include "rocksdb/db.h"
+#include "rocksdb/slice.h"
+#include "rocksdb/options.h"
+
+using namespace rocksdb;
+
 namespace gkvs {
 
 

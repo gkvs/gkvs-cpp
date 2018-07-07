@@ -20,3 +20,10 @@ make EVENT_LIB=libevent
 popd
 popd
 
+echo "Build RocksDB"
+
+pushd modules
+pushd rocksdb
+make OPT=-DSNAPPY
+popd
+popd

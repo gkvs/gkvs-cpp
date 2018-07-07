@@ -129,10 +129,10 @@ namespace gkvs {
             status->set_errormessage(reply->str);
         }
 
-        void key_result(const Key& key, ValueResult *result, const OutputOptions &out) {
+        void key_result(const Key& requestKey, ValueResult* result, const OutputOptions &out) {
 
             if (include_key(out)) {
-                result->mutable_key()->CopyFrom(key);
+                result->mutable_key()->CopyFrom(requestKey);
             }
 
         }
@@ -170,9 +170,9 @@ namespace gkvs {
             return false;
         }
 
-        void key_result(const redis_reply& reply, gkvs::Key* key, const OutputOptions &out);
+        void key_result(const redis_reply& reply, ValueResult* result, const OutputOptions &out);
 
-        std::string value_result(const redis_reply& reply, gkvs::Value *value, const OutputOptions &out);
+        std::string value_result(const redis_reply& reply, Value* value, const OutputOptions &out);
 
     };
 
@@ -236,7 +236,7 @@ std::string gkvs::redis_reply::pack_redis_value(const redisReply *reply) {
     return result;
 }
 
-void gkvs::RedisDriver::key_result(const redis_reply& reply, gkvs::Key* key, const OutputOptions &out) {
+void gkvs::RedisDriver::key_result(const redis_reply& reply, ValueResult* result, const OutputOptions &out) {
 
     bool includeKey = include_key(out);
 
@@ -246,19 +246,19 @@ void gkvs::RedisDriver::key_result(const redis_reply& reply, gkvs::Key* key, con
 
         size_t delim = raw.find(':', 0);
         if (delim == -1 || delim + 1 >= raw.size()) {
-            key->set_raw(raw);
+            result->mutable_key()->set_raw(raw);
         }
         else {
-            key->set_tablename(raw.substr(0, delim));
+            result->mutable_key()->set_tablename(raw.substr(0, delim));
             size_t pos = delim + 1;
-            key->set_raw(raw.substr(pos, raw.size() - pos));
+            result->mutable_key()->set_raw(raw.substr(pos, raw.size() - pos));
         }
 
     }
 
 }
 
-std::string gkvs::RedisDriver::value_result(const redis_reply& reply, gkvs::Value *value, const OutputOptions &out) {
+std::string gkvs::RedisDriver::value_result(const redis_reply& reply, Value *value, const OutputOptions &out) {
 
      std::string raw = reply.to_raw();
 
@@ -395,7 +395,7 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, char* offset, int 
                 error(element, response.mutable_status());
             } else {
                 metadata_result(nullptr, -1, &response);
-                key_result(redis_reply(element, false), response.mutable_key(), OutputOptions::KEY);
+                key_result(redis_reply(element, false), &response, request->output());
                 success(response.mutable_status());
             }
 
@@ -410,14 +410,12 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, char* offset, int 
 void gkvs::RedisDriver::do_get(const KeyOperation *request, ValueResult *response) {
 
     response->mutable_header()->set_tag(request->header().tag());
+    key_result(request->key(), response, request->output());
 
     if (!request->has_key()) {
         bad_request("no key", response->mutable_status());
         return;
     }
-
-    // for client identification purpose
-    key_result(request->key(), response, request->output());
 
     const std::string& tableName = request->key().tablename();
 
@@ -514,12 +512,6 @@ void gkvs::RedisDriver::do_put(const PutOperation *request, StatusResult *respon
     }
 
     std::string key = tableName + ":" + request->key().raw();
-
-    if (!request->has_value()) {
-        bad_request("no value", response->mutable_status());
-        return;
-    }
-
     const std::string& value = request->value().raw();
 
     bool updated = true;

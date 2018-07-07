@@ -277,6 +277,11 @@ std::shared_ptr<gkvs::Driver> create_driver(const std::string& content) {
         driver = gkvs::create_aerospike_driver(name, driver_conf, FLAGS_lua_dir);
 
     }
+    else if (driver_name == "rocks") {
+
+        driver = gkvs::create_rocks_driver(name, driver_conf, FLAGS_work_dir);
+
+    }
     else {
         throw std::runtime_error("unknown driver" + content);
     }

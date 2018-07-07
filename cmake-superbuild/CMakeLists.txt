@@ -87,6 +87,7 @@ ExternalProject_Add(rocksdb
         PREFIX rocksdb
         SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../modules/rocksdb"
         CMAKE_CACHE_ARGS
+        -DWITH_SNAPPY:BOOL=ON
         -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/rocksdb
         )
 set(rocksdb_DIR "${CMAKE_CURRENT_BINARY_DIR}/rocksdb/lib/cmake/rocksdb")

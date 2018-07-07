@@ -26,6 +26,11 @@ message(STATUS "Using msgpack ${msgpack_VERSION}")
 find_library(_ROCKSDB_LIB librocksdb.a rocksdb)
 message(STATUS "Using rocksdb ${_ROCKSDB_LIB}")
 
+
+find_library(_BZ2_LIB bz2)
+message(STATUS "Using bz2 ${_BZ2_LIB}")
+list(APPEND LIB_LIST ${_BZ2_LIB})
+
 # REDIS
 
 find_library(_REDIS_LIB libhiredis.a hiredis)
