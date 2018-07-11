@@ -174,6 +174,7 @@ add_executable(gkvs
         "redis_driver.cc"
         "rocks_driver.cc"
         "crypto.cc"
+        "lua_helper.cc"
         ${gkvs_proto_srcs}
         ${gkvs_grpc_srcs})
 

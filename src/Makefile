@@ -26,7 +26,7 @@ CPPFLAGS += `pkg-config --cflags protobuf grpc openssl`
 CPPFLAGS += -I../modules/nlohmann_json/single_include
 CXXFLAGS += -std=c++11 -O3
 LUA_UNK_FLAG=-Wl,-E
-LUA_ALL_FLAGS=$(shell pkg-config --libs luajit --static)
+LUA_ALL_FLAGS=$(shell pkg-config --libs lua luajit --static)
 LUA_FLAGS=$(subst $(LUA_UNK_FLAG),, $(LUA_ALL_FLAGS))
 
 ifeq ($(SYSTEM),Darwin)
@@ -56,7 +56,7 @@ all: system-check $(PROJECT)-cli $(PROJECT)
 $(PROJECT)-cli: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_client.o helper.o
 	$(CXX) $^ $(LDFLAGS) -o $@
 
-$(PROJECT): $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o as_helper.o as_driver_tests.o redis_driver.o rocks_driver.o crypto.o
+$(PROJECT): $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o as_helper.o as_driver_tests.o redis_driver.o rocks_driver.o crypto.o lua_helper.cc
 	$(CXX) $^ $(LDFLAGS) $(AEROFLAGS) $(ROCKSFLAGS) $(LUA_FLAGS) -o $@
 
 #crypto.o: crypto.cc

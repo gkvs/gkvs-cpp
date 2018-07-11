@@ -16,6 +16,12 @@ message(STATUS "Direct build")
 
 include(FindPkgConfig)
 
+# LuaJIT
+
+find_library(_LUAJIT_LIB luajit)
+message(STATUS "Using luajit ${_LUAJIT_LIB}")
+list(APPEND LIB_LIST ${_LUAJIT_LIB})
+
 # Msgpack
 
 find_package(msgpack CONFIG REQUIRED)
@@ -26,6 +32,25 @@ message(STATUS "Using msgpack ${msgpack_VERSION}")
 find_library(_ROCKSDB_LIB librocksdb.a rocksdb)
 message(STATUS "Using rocksdb ${_ROCKSDB_LIB}")
 
+# Snappy
+
+find_library(_SNAPPY_LIB snappy)
+message(STATUS "Using snappy ${_SNAPPY_LIB}")
+list(APPEND LIB_LIST ${_SNAPPY_LIB})
+
+# Z-standard
+
+find_library(_ZSTD_LIB zstd)
+message(STATUS "Using zstd ${_ZSTD_LIB}")
+list(APPEND LIB_LIST ${_ZSTD_LIB})
+
+# LZ4
+
+find_library(_LZ4_LIB lz4)
+message(STATUS "Using lz4 ${_LZ4_LIB}")
+list(APPEND LIB_LIST ${_LZ4_LIB})
+
+# BZ2
 
 find_library(_BZ2_LIB bz2)
 message(STATUS "Using bz2 ${_BZ2_LIB}")
@@ -173,6 +198,7 @@ add_executable(gkvs
         "src/redis_driver.cc"
         "src/rocks_driver.cc"
         "src/crypto.cc"
+        "src/lua_helper.cc"
         ${gkvs_proto_srcs}
         ${gkvs_grpc_srcs})
 

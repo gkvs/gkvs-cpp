@@ -77,7 +77,6 @@ namespace gkvs {
             }
 
 
-
         }
 
         ~RocksDriver() override {
@@ -203,6 +202,8 @@ namespace gkvs {
     Driver* create_rocks_driver(const std::string &name, const json& conf, const std::string &db_dir) {
         return new RocksDriver(name, conf, db_dir);
     }
+
+
 
 }
 
@@ -360,7 +361,13 @@ void gkvs::RocksDriver::do_put(const PutOperation *request, StatusResult *respon
     const std::string& key = request->key().raw();
     const std::string& value = request->value().raw();
 
+    if (request->compareandput()) {
+        unsupported("RocksDB driver does not support compare and put", response->mutable_status());
+        return;
+    }
+
     rocksdb::Status status = db_->Put(WriteOptions(), key, value);
+
 
     if (status.ok()) {
 
