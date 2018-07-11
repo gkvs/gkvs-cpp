@@ -1,13 +1,15 @@
 #pragma once
 
-#include <lua.h>
-#include <lauxlib.h>
-#include <lualib.h>
+extern "C" {
 
-/**
+//#include <lua.h>
+//#include <lauxlib.h>
+//#include <lualib.h>
+
 #include <luajit-2.0/lua.h>
 #include <luajit-2.0/lauxlib.h>
-*/
+
+}
 
 #include <msgpack.h>
 

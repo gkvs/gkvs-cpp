@@ -11,6 +11,10 @@
 #define BINARY_PREFIX "binary!"
 #define BINARY_PREFIX_LEN 7
 
+#if LUA_VERSION_NUM > 501
+    #define lua_objlen lua_rawlen
+#endif
+
 
 void gkvs::lua_ser::unpack_array(const msgpack_object_array& array, lua_State* L) {
 

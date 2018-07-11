@@ -26,7 +26,7 @@ CPPFLAGS += `pkg-config --cflags protobuf grpc openssl`
 CPPFLAGS += -I../modules/nlohmann_json/single_include
 CXXFLAGS += -std=c++11 -O3
 LUA_UNK_FLAG=-Wl,-E
-LUA_ALL_FLAGS=$(shell pkg-config --libs lua luajit --static)
+LUA_ALL_FLAGS=$(shell pkg-config --libs luajit --static)
 LUA_FLAGS=$(subst $(LUA_UNK_FLAG),, $(LUA_ALL_FLAGS))
 
 ifeq ($(SYSTEM),Darwin)

@@ -19,7 +19,7 @@ include(FindPkgConfig)
 # LuaJIT
 
 find_library(_LUAJIT_LIB luajit)
-message(STATUS "Using luajit ${_LUAJIT_LIB}")
+message(STATUS "Using luajit  ${_LUAJIT_LIB}")
 list(APPEND LIB_LIST ${_LUAJIT_LIB})
 
 # Msgpack
@@ -201,6 +201,9 @@ add_executable(gkvs
         "src/lua_helper.cc"
         ${gkvs_proto_srcs}
         ${gkvs_grpc_srcs})
+
+message("-- LIB_LIST ${LIB_LIST}")
+
 
 target_link_libraries(gkvs
         ${_GRPC_GRPCPP}
