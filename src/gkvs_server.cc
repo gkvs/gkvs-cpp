@@ -22,6 +22,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include <grpc/grpc.h>
 #include <grpcpp/server.h>
@@ -35,6 +36,7 @@
 #include "helper.h"
 #include "gkvs.grpc.pb.h"
 #include "driver.h"
+#include "script.h"
 
 using grpc::Server;
 using grpc::ServerBuilder;
@@ -51,67 +53,188 @@ using json = nlohmann::json;
 
 namespace gkvs {
 
-    class GenericStoreAsync final {
+    class Redirect {
 
     public:
 
-        GenericStoreAsync(std::shared_ptr<gkvs::Driver> driver,
-                          std::shared_ptr<grpc::ServerCredentials> creds) {
-
-            this->_driver = driver;
-            this->_creds = creds;
+        Redirect(const std::string& view, const std::string& cluster, Driver* driver, const std::string& table)
+                : view_(view), cluster_(cluster), driver_(driver), table_(table) {
         }
 
-        ~GenericStoreAsync() {
-            _server->Shutdown();
-            _cq->Shutdown();
+        const std::string& get_view() const {
+            return view_;
         }
 
-        void run() {
+        const std::string& get_cluster() const {
+            return cluster_;
+        }
 
-            std::string server_address("0.0.0.0:50051");
+        Driver* get_driver() const {
+            return driver_;
+        }
 
-            ServerBuilder builder;
-            builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-            builder.RegisterService(&_service);
-            _cq = builder.AddCompletionQueue();
-            _server = builder.BuildAndStart();
-            std::cout << "Server listening on " << server_address << std::endl;
-
-            // Proceed to the server's main loop.
-            loop();
-
+        const std::string& get_table() const {
+            return table_;
         }
 
     private:
 
-        void loop() {
-
-        }
-
-
-        gkvs::GenericStore::AsyncService _service;
-        std::unique_ptr<grpc::ServerCompletionQueue> _cq;
-        std::unique_ptr<Server> _server;
-
-        std::shared_ptr<gkvs::Driver> _driver;
-        std::shared_ptr<grpc::ServerCredentials> _creds;
+        std::string view_;
+        std::string cluster_;
+        Driver* driver_;
+        std::string table_;
 
     };
+
 
     class GenericStoreImpl final : public gkvs::GenericStore::Service {
 
     public:
 
-        explicit GenericStoreImpl(std::shared_ptr<gkvs::Driver> driver) {
-            _driver = driver;
+        explicit GenericStoreImpl() {
         }
 
+        ~GenericStoreImpl() {
+
+            for (auto i = drivers_.begin(); i != drivers_.end(); ++i) {
+                Driver* driver = i->second;
+                delete driver;
+            }
+
+            for (auto i = views_.begin(); i != views_.end(); ++i) {
+                Redirect* redirect = i->second;
+                delete redirect;
+            }
+        }
+
+        bool add_driver(const std::string& cluster, Driver* driver, std::string& error) {
+
+            if (cluster.empty()) {
+                error = "empty cluster name";
+                return false;
+            }
+
+            auto i = drivers_.find(cluster);
+
+            if (i != drivers_.end()) {
+                error = "cluster already exists: " + cluster;
+                return false;
+            }
+
+            drivers_[cluster] = driver;
+
+            return true;
+        }
+
+        bool add_table(const std::string& table, const std::string& cluster, const json& conf, std::string& error) {
+
+            if (table.empty()) {
+                error = "empty table name";
+                return false;
+            }
+
+            if (cluster.empty()) {
+                error = "empty cluster name";
+                return false;
+            }
+
+            auto i = drivers_.find(cluster);
+
+            if (i == drivers_.end()) {
+                error = "cluster not found: " + cluster;
+                return false;
+            }
+
+            return i->second->add_table(table, conf, error);
+
+        }
+
+        bool add_view(const std::string& view, const std::string& cluster, const std::string& table, std::string& error) {
+
+            if (view.empty()) {
+                error = "empty view name";
+                return false;
+            }
+
+            if (cluster.empty()) {
+                error = "empty cluster name";
+                return false;
+            }
+
+            if (table.empty()) {
+                error = "empty table name";
+                return false;
+            }
+
+            auto i = views_.find(view);
+            if (i != views_.end()) {
+                error = "view already exists: " + view;
+                return false;
+            }
+
+            auto c = drivers_.find(cluster);
+            if (c == drivers_.end()) {
+                error = "cluster not found: " + cluster;
+                return false;
+            }
+
+            Driver* driver = c->second;
+
+            views_[view] = new Redirect(view, cluster, driver, table);
+
+            return true;
+
+        }
 
         grpc::Status get(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request,
-                   ::gkvs::ValueResult *response) override {
+                         ::gkvs::ValueResult *response) override {
 
-            _driver->get(request, response);
+            auto begin = std::chrono::high_resolution_clock::now();
+
+            grpc::Status status = do_get(context, request, response);
+
+            auto end = std::chrono::high_resolution_clock::now();
+            double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() / 1000000;
+
+            result::elapsed(elapsed, response->mutable_header());
+
+            return status;
+        }
+
+        grpc::Status do_get(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request,
+                   ::gkvs::ValueResult *response) {
+
+            // for client identification purpose
+            result::header(request->header(), response->mutable_header());
+
+            if (!request->has_key()) {
+                status::bad_request("no key", response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            // for client identification purpose
+            result::key(request->key(), response, request->output());
+
+            StatusErr statusErr;
+            if (!statusErr.valid_key(request->key())) {
+                statusErr.to_status(response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            const std::string& view = request->key().tablename();
+
+            auto i = views_.find(view);
+            if (i == views_.end()) {
+                status::error_resource("table not found", response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            Redirect* redirect = i->second;
+
+            Driver* driver = redirect->get_driver();
+            const std::string& table = redirect->get_table();
+
+            driver->get(request, table, response);
 
             return grpc::Status::OK;
         }
@@ -119,9 +242,69 @@ namespace gkvs {
         grpc::Status multiGet(::grpc::ServerContext *context, const ::gkvs::BatchKeyOperation *request,
                               ::gkvs::BatchValueResult *response) override {
 
-            if (!request->operation().empty()) {
+            std::unordered_map<Driver*, std::vector<MultiGetEntry>> map;
 
-                _driver->multiGet(request, response);
+            int size = request->operation_size();
+            for (int i = 0; i < size; ++i) {
+
+                const KeyOperation& op = request->operation(i);
+                ValueResult *result = response->add_result();
+
+                // for client identification purpose
+                result::header(op.header(), result->mutable_header());
+
+                if (!op.has_key()) {
+                    status::bad_request("no key", result->mutable_status());
+                    continue;
+                }
+
+                // for client identification purpose
+                result::key(op.key(), result, op.output());
+
+                StatusErr statusErr;
+                if (!statusErr.valid_key(op.key())) {
+                    statusErr.to_status(result->mutable_status());
+                    continue;
+                }
+
+                const std::string& view = op.key().tablename();
+
+                auto v = views_.find(view);
+                if (v == views_.end()) {
+                    status::error_resource("table not found", result->mutable_status());
+                    continue;
+                }
+
+                Redirect* redirect = v->second;
+
+                Driver* driver = redirect->get_driver();
+                const std::string& table = redirect->get_table();
+
+                if (map.find(driver) == map.end()) {
+                    map[driver] = std::vector<MultiGetEntry>();
+                }
+
+                map[driver].push_back(MultiGetEntry(op, table, result));
+            }
+
+            // run
+
+            for (auto k = map.begin(); k != map.end(); ++k) {
+
+                Driver* driver = k->first;
+                std::vector<MultiGetEntry>& entries = k->second;
+
+                auto begin = std::chrono::high_resolution_clock::now();
+
+                driver->multiGet(entries);
+
+                auto end = std::chrono::high_resolution_clock::now();
+                double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() / 1000000;
+
+                for (auto e = entries.begin(); e != entries.end(); ++e) {
+                    result::elapsed(elapsed, e->get_response()->mutable_header());
+                }
+
             }
 
             return grpc::Status::OK;
@@ -130,6 +313,7 @@ namespace gkvs {
         grpc::Status getAll(::grpc::ServerContext *context,
                             ::grpc::ServerReaderWriter<::gkvs::ValueResult, ::gkvs::KeyOperation> *stream) override {
 
+
             KeyOperation request;
             ValueResult response;
 
@@ -137,7 +321,7 @@ namespace gkvs {
 
                 response.Clear();
 
-                _driver->get(&request, &response);
+                get(context, &request, &response);
 
                 stream->Write(response);
 
@@ -150,8 +334,31 @@ namespace gkvs {
         grpc::Status scan(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
                     ::grpc::ServerWriter<::gkvs::ValueResult> *writer) override {
 
+            const std::string& view = request->tablename();
 
-            _driver->scan(request, writer);
+            if (view.empty()) {
+                ValueResult result;
+                result::header(request->header(), result.mutable_header());
+                status::bad_request("empty table name", result.mutable_status());
+                writer->WriteLast(result, grpc::WriteOptions());
+                return grpc::Status::OK;
+            }
+
+            auto i = views_.find(view);
+
+            if (i == views_.end()) {
+                ValueResult result;
+                result::header(request->header(), result.mutable_header());
+                status::error_resource("table not found", result.mutable_status());
+                writer->WriteLast(result, grpc::WriteOptions());
+                return grpc::Status::OK;
+            }
+
+            Redirect* redirect = i->second;
+            Driver* driver = redirect->get_driver();
+            const std::string& table = redirect->get_table();
+
+            driver->scan(request, table, writer);
 
             return grpc::Status::OK;
         }
@@ -159,7 +366,51 @@ namespace gkvs {
         grpc::Status
         put(::grpc::ServerContext *context, const ::gkvs::PutOperation *request, ::gkvs::StatusResult *response) override {
 
-            _driver->put(request, response);
+            auto begin = std::chrono::high_resolution_clock::now();
+
+            grpc::Status status = do_put(context, request, response);
+
+            auto end = std::chrono::high_resolution_clock::now();
+            double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() / 1000000;
+
+            result::elapsed(elapsed, response->mutable_header());
+
+            return status;
+
+        }
+
+        grpc::Status
+        do_put(::grpc::ServerContext *context, const ::gkvs::PutOperation *request, ::gkvs::StatusResult *response) {
+
+            // for client identification purpose
+            result::header(request->header(), response->mutable_header());
+
+            if (!request->has_key()) {
+                status::bad_request("no key", response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            StatusErr statusErr;
+            if (!statusErr.valid_key(request->key())) {
+                statusErr.to_status(response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            const std::string& view = request->key().tablename();
+
+            auto i = views_.find(view);
+
+            if (i == views_.end()) {
+                status::error_resource("table not found", response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            Redirect* redirect = i->second;
+
+            Driver* driver = redirect->get_driver();
+            const std::string& table = redirect->get_table();
+
+            driver->put(request, table, response);
 
             return grpc::Status::OK;
         }
@@ -168,7 +419,6 @@ namespace gkvs {
         grpc::Status putAll(::grpc::ServerContext *context,
                       ::grpc::ServerReaderWriter<::gkvs::StatusResult, ::gkvs::PutOperation> *stream) override {
 
-
             PutOperation request;
             StatusResult response;
 
@@ -176,7 +426,7 @@ namespace gkvs {
 
                 response.Clear();
 
-                _driver->put(&request, &response);
+                put(context, &request, &response);
 
                 stream->Write(response);
 
@@ -189,7 +439,51 @@ namespace gkvs {
         grpc::Status
         remove(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::StatusResult *response) override {
 
-            _driver->remove(request, response);
+            auto begin = std::chrono::high_resolution_clock::now();
+
+            grpc::Status status = do_remove(context, request, response);
+
+            auto end = std::chrono::high_resolution_clock::now();
+            double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count() / 1000000;
+
+            result::elapsed(elapsed, response->mutable_header());
+
+            return status;
+
+        }
+
+        grpc::Status
+        do_remove(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request, ::gkvs::StatusResult *response) {
+
+            // for client identification purpose
+            result::header(request->header(), response->mutable_header());
+
+            if (!request->has_key()) {
+                status::bad_request("no key", response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            StatusErr statusErr;
+            if (!statusErr.valid_key(request->key())) {
+                statusErr.to_status(response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            const std::string& view = request->key().tablename();
+
+            auto i = views_.find(view);
+
+            if (i == views_.end()) {
+               status::error_resource("table not found", response->mutable_status());
+                return grpc::Status::OK;
+            }
+
+            Redirect* redirect = i->second;
+
+            Driver* driver = redirect->get_driver();
+            const std::string& table = redirect->get_table();
+
+            driver->remove(request, table, response);
 
             return grpc::Status::OK;
         }
@@ -204,7 +498,7 @@ namespace gkvs {
 
                 response.Clear();
 
-                _driver->remove(&request, &response);
+                remove(context, &request, &response);
 
                 stream->Write(response);
 
@@ -216,12 +510,12 @@ namespace gkvs {
 
 
     private:
-        std::shared_ptr<gkvs::Driver> _driver;
 
+        std::unordered_map<std::string, Driver*> drivers_;
+        std::unordered_map<std::string, Redirect*> views_;
 
 
     protected:
-
 
     };
 
@@ -233,7 +527,7 @@ DEFINE_string(lua_dir, "", "User lua scripts directory for Aerospike");
 DEFINE_bool(run_tests, false, "Run functional tests");
 DEFINE_string(host_port, "0.0.0.0:4040", "Bind sync server host:port");
 
-std::unique_ptr<gkvs::GenericStoreImpl> sync_service = nullptr;
+std::unique_ptr<gkvs::GenericStoreImpl> sync_service ( new gkvs::GenericStoreImpl() );
 std::unique_ptr<Server> sync_server = nullptr;
 
 void onTerminate(int sign)
@@ -244,49 +538,71 @@ void onTerminate(int sign)
 
 }
 
+bool gkvs::add_cluster(const std::string& cluster, const std::string& driver, const std::string& msgpack, std::string& error) {
 
-std::shared_ptr<gkvs::Driver> create_driver(const std::string& content) {
+    gkvs::Driver* dr;
 
-    gkvs::Driver *driver = nullptr;
-
-    json conf;
-
-    try {
-        conf = nlohmann::json::parse(content.begin(), content.end());
-    }
-    catch(std::exception e) {
-        LOG(ERROR) << "failed to parse config: " << content << std::endl;
-        return std::shared_ptr<gkvs::Driver>(nullptr);
+    int size = msgpack.size();
+    std::vector<uint8_t> input;
+    for (int i = 0; i < size; ++i) {
+        char ch = msgpack[i];
+        uint8_t uch = static_cast<uint8_t>(ch);
+        input.push_back(uch);
     }
 
+    json conf = json::from_msgpack(input);
 
-    LOG(INFO) << "ADD CLUSTER: " << conf << std::endl;
+    if (driver == "redis") {
 
-    std::string name = conf["name"].get<std::string>();
-    std::string driver_name = conf["driver"].get<std::string>();
-
-    json driver_conf = conf["config"];
-
-    if (driver_name == "redis") {
-
-        driver = gkvs::create_redis_driver(name, driver_conf);
+        dr = gkvs::create_redis_driver(cluster, conf);
 
     }
-    else if (driver_name == "aerospike") {
+    else if (driver == "aerospike") {
 
-        driver = gkvs::create_aerospike_driver(name, driver_conf, FLAGS_lua_dir);
+        dr = gkvs::create_aerospike_driver(cluster, conf, FLAGS_lua_dir);
 
     }
-    else if (driver_name == "rocks") {
+    else if (driver == "rocks") {
 
-        driver = gkvs::create_rocks_driver(name, driver_conf, FLAGS_work_dir);
+        dr = gkvs::create_rocks_driver(cluster, conf, FLAGS_work_dir);
 
     }
     else {
-        throw std::runtime_error("unknown driver" + content);
+        error = "unknown driver: " + driver;
+        return false;
     }
 
-    return std::shared_ptr<gkvs::Driver>(driver);
+    return sync_service->add_driver(cluster, dr, error);
+
+}
+
+bool gkvs::add_table(const std::string& table, const std::string& cluster, const std::string& msgpack, std::string& error) {
+
+    int size = msgpack.size();
+    std::vector<uint8_t> input;
+    for (int i = 0; i < size; ++i) {
+        char ch = msgpack[i];
+        uint8_t uch = static_cast<uint8_t>(ch);
+        input.push_back(uch);
+    }
+
+    json conf = json::from_msgpack(input);
+
+    return sync_service->add_table(table, cluster, conf, error);
+}
+
+bool gkvs::add_view(const std::string& view, const std::string& cluster, const std::string& table, std::string& error) {
+    return sync_service->add_view(view, cluster, table, error);
+}
+
+
+void load_script(const std::string& content) {
+
+    gkvs::lua_script script;
+    if (!script.loadstring(content)) {
+        LOG(ERROR) << "failed to parse config: " << content << std::endl;
+    }
+
 }
 
 std::shared_ptr<grpc::ServerCredentials> create_server_credentials() {
@@ -318,11 +634,9 @@ std::shared_ptr<grpc::ServerCredentials> create_server_credentials() {
     return creds;
 }
 
-void build_sync_server(std::shared_ptr<gkvs::Driver> driver, std::shared_ptr<grpc::ServerCredentials> creds) {
+void build_sync_server(std::shared_ptr<grpc::ServerCredentials> creds) {
 
     std::string server_address(FLAGS_host_port);
-
-    sync_service = std::unique_ptr<gkvs::GenericStoreImpl> ( new gkvs::GenericStoreImpl(driver) );
 
     ServerBuilder builder;
     builder.AddListeningPort(server_address, creds);
@@ -339,22 +653,14 @@ void RunServer(const std::string& filename) {
 
     std::string content = gkvs::get_file_content(filename);
 
-    std::shared_ptr<gkvs::Driver> driver = create_driver(content);
-
-    if (driver.get() == nullptr) {
-        return;
-    }
+    load_script(content);
 
     std::shared_ptr<grpc::ServerCredentials> creds = create_server_credentials();
 
-    build_sync_server(driver, creds);
+    build_sync_server(creds);
 
     signal(SIGINT, &onTerminate);
     signal(SIGTERM, &onTerminate);
-
-
-    gkvs::GenericStoreAsync async(driver, creds);
-    async.run();
 
     sync_server->Wait();
 

@@ -56,48 +56,16 @@ Run sync_server
 ./src/gkvs_server
 ```
 
-### Client
+### Configure
 
-Client commands to configure service:
+GKVS supports config scripts written in LUA language
 ```
-ADD CLUSTER as1a CONFIG @as1a.json;
 
-ADD CLUSTER as1b CONFIG @as1b.json;
+add_cluster("redis1", "redis", { host = "127.0.0.1", port = 6379 } );
 
-ADD CLUSTER as1 CONFIG ‘{ “active”: “as1a”, “standby”: “as1b”, “driver”: “failover”}’;
+add_table("test", "redis1", { ttl = 100 } );
 
-ADD TABLE as1.test CONFIG @test.json;
-
-DROP TABLE as1.test;
-
-// only views are available for clients
-ADD VIEW test CONFIG '{"type": "simple", "table": "as1.test"}';
-DROP VIEW test;
-
-SHOW VIEWS;
-SHOW TABLES;
-SHOW CLUSTERS;
-SHOW USERS;
-SHOW RULES;
-SHOW MOVES;
-SHOW ZONES;
-SHOW PIPELINES;
-
-ADD USER alex CONFIG @alex.json;
-DROP USER alex;
-
-// rules are working only on views
-ADD RULE alex_rule1 rwd 'test'; 
-DROP RULE alex_rule1;
-
-ADD MOVE move1 CONFIG '{ "from": "as1.test", "to": "as2.test" }';
-DROP MOVE move1;
-
-ADD ZONE us_w CONFIG '{"zone": "us_w", "seed": "5.5.5.5:4040"}';
-DROP ZONE us_w;
-
-ADD PIPELINE pipe1 CONFIG '';
-DROP PIPLELINE pipe1;
+add_view("TEST", "redis1", "test");
 
 ```
 

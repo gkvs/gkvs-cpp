@@ -66,6 +66,8 @@ namespace gkvs {
 
         explicit AerospikeDriver(const std::string& name, const json &conf, const std::string &lua_dir) : Driver(name) {
 
+            LOG(INFO) << "aerospike conf = " << conf << std::endl;
+
             //json conf = nlohmann::json::parse(conf_str.begin(), conf_str.end());
 
             as_log_set_callback(glog_callback);
@@ -100,7 +102,7 @@ namespace gkvs {
 
             auto hosts_it = conf.find("hosts");
 
-            if (hosts_it != conf.end() && hosts_it->is_array()) {
+            if (hosts_it != conf.end()) {
 
                 json hosts = *hosts_it;
 
@@ -181,34 +183,37 @@ namespace gkvs {
 
         }
 
+        bool add_table(const std::string& table, const json& conf, std::string& error) override {
+            return true;
+        }
 
-        void get(const KeyOperation *request, ValueResult *response) override {
+        void get(const KeyOperation *request, const std::string& table_override, ValueResult *response) override {
 
-            do_get(request, response);
+            do_get(request, table_override, response);
 
         }
 
-        void multiGet(const BatchKeyOperation *request, BatchValueResult *response) override {
+        void multiGet(const std::vector<MultiGetEntry>& entries) override {
 
-            do_multi_get(request, response);
-
-        }
-
-        void scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer) override {
-
-            do_scan(request, writer);
+            do_multi_get(entries);
 
         }
 
-        void put(const PutOperation *request, StatusResult *response) override {
+        void scan(const ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<ValueResult> *writer) override {
 
-            do_put(request, response);
+            do_scan(request, table_override, writer);
 
         }
 
-        void remove(const KeyOperation *request, StatusResult *response) override {
+        void put(const PutOperation *request, const std::string& table_override, StatusResult *response) override {
 
-            do_remove(request, response);
+            do_put(request, table_override, response);
+
+        }
+
+        void remove(const KeyOperation *request, const std::string& table_override, StatusResult *response) override {
+
+            do_remove(request, table_override, response);
 
         }
 
@@ -333,9 +338,9 @@ namespace gkvs {
             status->set_errorcode(code);
         }
 
-        bool init_key(const Key &requestKey, as_key& key, StatusErr& statusErr) {
+        bool init_key(const Key &requestKey, const std::string& table_override, as_key& key, StatusErr& statusErr) {
 
-            const std::string& tableName = requestKey.tablename();
+            const std::string& tableName = table_override;
 
             if (tableName.empty()) {
                 statusErr.bad_request("empty table name");
@@ -419,17 +424,10 @@ namespace gkvs {
 
         }
 
-        void key_result(const Key& key , ValueResult *result, const OutputOptions &out) {
-
-            if (include_key(out)) {
-                result->mutable_key()->CopyFrom(key);
-            }
-
-        }
 
         void key_result(as_key* key, ValueResult *result, const OutputOptions &out) {
 
-            if (!include_key(out)) {
+            if (!check::include_key(out)) {
                 return;
             }
 
@@ -463,7 +461,7 @@ namespace gkvs {
 
         void value_result(as_record *rec, ValueResult *result, const OutputOptions &out) {
 
-            bool includeValue = include_value(out);
+            bool includeValue = check::include_value(out);
 
             if (!includeValue) {
                 return;
@@ -484,13 +482,13 @@ namespace gkvs {
 
         struct multiGet_context {
 
-            AerospikeDriver* instance;
-            BatchValueResult *response;
-            std::unordered_map<const as_key*, const KeyOperation*, as_key_hash, as_key_equal> key_map;
+            AerospikeDriver* driver;
+            const std::vector<MultiGetEntry>& entries;
+            std::unordered_map<const as_key*, int, as_key_hash, as_key_equal> key_map;
 
         };
 
-        void do_multi_get(const BatchKeyOperation *request, BatchValueResult *response);
+        void do_multi_get(const std::vector<MultiGetEntry>& entries);
 
         bool multiGet_callback(const as_batch_read* results, uint32_t n, multiGet_context* context);
 
@@ -510,7 +508,7 @@ namespace gkvs {
 
         };
 
-        void do_scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer);
+        void do_scan(const ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<ValueResult> *writer);
 
         bool static static_scan_callback(const as_val* val, void* udata);
 
@@ -521,11 +519,11 @@ namespace gkvs {
          */
 
 
-        void do_get(const KeyOperation *request, ValueResult *response);
+        void do_get(const KeyOperation *request, const std::string& table_override, ValueResult *response);
 
-        void do_put(const PutOperation *request, StatusResult *response);
+        void do_put(const PutOperation *request, const std::string& table_override, StatusResult *response);
 
-        void do_remove(const KeyOperation *request, StatusResult *response);
+        void do_remove(const KeyOperation *request, const std::string& table_override, StatusResult *response);
 
 
     };
@@ -702,11 +700,11 @@ static gkvs::StatusCode parse_aerospike_status(as_status status) {
 
 
 
-void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *request, ::gkvs::BatchValueResult *response) {
+void gkvs::AerospikeDriver::do_multi_get(const std::vector<MultiGetEntry>& entries) {
 
-    multiGet_context context = {this, response};
+    multiGet_context context = {this, entries};
 
-    uint32_t size = static_cast<uint32_t>(request->operation().size());
+    uint32_t size = static_cast<uint32_t>(entries.size());
 
     as_batch batch;
     as_batch_init(&batch, size);
@@ -720,31 +718,17 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
 
     for (uint32_t i = 0; i < size; ++i) {
 
-        const KeyOperation &operation = request->operation(i);
-
-        if (!operation.has_key()) {
-            ValueResult *result = response->add_result();
-            result->mutable_header()->set_tag(operation.header().tag());
-            bad_request("empty key", result->mutable_status());
-            continue;
-        }
-
-        StatusErr statusErr;
-        if (!valid_key(operation.key(), statusErr)) {
-            ValueResult *result = response->add_result();
-            result->mutable_header()->set_tag(operation.header().tag());
-            statusErr.to_status(result->mutable_status());
-            continue;
-        }
+        const KeyOperation &operation = entries[i].get_request();
+        const std::string& table_override = entries[i].get_table_override();
 
         if (operation.has_header() && operation.header().timeout() > max_timeout) {
             max_timeout = operation.header().timeout();
         }
 
+        StatusErr statusErr;
         as_key *key = as_batch_keyat(&batch, actual_size);
-        if (!init_key(operation.key(), *key, statusErr)) {
-            ValueResult *result = response->add_result();
-            result->mutable_header()->set_tag(operation.header().tag());
+        if (!init_key(operation.key(), table_override,  *key, statusErr)) {
+            ValueResult *result = entries[i].get_response();
             statusErr.to_status(result->mutable_status());
             continue;
         }
@@ -761,8 +745,8 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
             useSelect = false;
         }
 
-        includeValue |= include_value(operation.output());
-        context.key_map[key] = &operation;
+        includeValue |= check::include_value(operation.output());
+        context.key_map[key] = i;
         actual_size++;
     }
 
@@ -799,34 +783,33 @@ void gkvs::AerospikeDriver::do_multi_get(const ::gkvs::BatchKeyOperation *reques
 bool gkvs::AerospikeDriver::static_multiGet_callback(const as_batch_read* results, uint32_t n, void* udata) {
 
     multiGet_context* context = (multiGet_context*) udata;
-    return context->instance->multiGet_callback(results, n, context);
+    return context->driver->multiGet_callback(results, n, context);
 }
 
 
 bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint32_t n, multiGet_context* context) {
 
-    BatchValueResult *response = context->response;
+    const std::vector<MultiGetEntry>& entries = context->entries;
 
     for (uint32_t i = 0; i < n; ++i) {
 
-        ValueResult *result = response->add_result();
-
-        const KeyOperation* operation = nullptr;
         const as_key* key = results[i].key;
-        if (key) {
-            operation = context->key_map[key];
+        if (!key) {
+            LOG(ERROR) << "empty key in the batch: " << i << std::endl;
+            continue;
         }
 
-        if (operation) {
-            // for client identification purpose
-            result->mutable_header()->set_tag(operation->header().tag());
-            key_result(operation->key(), result, operation->output());
-        }
-        else {
+        auto k = context->key_map.find(key);
+        if (k == context->key_map.end()) {
             char* pstr = as_val_tostring(key->valuep);
             LOG(ERROR) << "operation not found for key: " << pstr << std::endl;
             cf_free(pstr);
+            continue;
         }
+
+        int pos = k->second;
+        const KeyOperation& operation =  context->entries[pos].get_request();
+        ValueResult *result = context->entries[pos].get_response();
 
         as_status status = results[i].result;
 
@@ -835,21 +818,16 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
             const as_record *rec = &results[i].record;
 
             metadata_result(const_cast<as_record *>(rec), result);
-            if (operation) {
-                value_result(const_cast<as_record *>(rec), result, operation->output());
-            }
-            else {
-                value_result(const_cast<as_record *>(rec), result, OutputOptions::VALUE);
-            }
+            value_result(const_cast<as_record *>(rec), result, operation.output());
 
-            success(result->mutable_status());
+            status::success(result->mutable_status());
 
         }
         else if (status == AEROSPIKE_ERR_RECORD_NOT_FOUND) {
 
             // return no metadata, that means record was not found
 
-            success(result->mutable_status());
+            status::success(result->mutable_status());
         }
         else {
             error(results[i].result, result->mutable_status());
@@ -861,26 +839,16 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
 }
 
 
-void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, ::grpc::ServerWriter<::gkvs::ValueResult> *writer) {
-
-    const std::string& tableName = request->tablename();
-
-    if (tableName.empty()) {
-        ValueResult result;
-        result.mutable_header()->set_tag(request->header().tag());
-        bad_request("empty table name", result.mutable_status());
-        writer->WriteLast(result, grpc::WriteOptions());
-        return;
-    }
+void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<::gkvs::ValueResult> *writer) {
 
     as_error err;
     scan_context context { this, writer, request };
 
     as_scan scan;
-    as_scan_init(&scan, namespace_.c_str(), tableName.c_str());
+    as_scan_init(&scan, namespace_.c_str(), table_override.c_str());
     scan.deserialize_list_map = false;
 
-    if (!include_value(request->output())) {
+    if (!check::include_value(request->output())) {
         as_scan_set_nobins(&scan, true);
     }
 
@@ -922,8 +890,8 @@ bool gkvs::AerospikeDriver::scan_callback(const as_val* val, scan_context* conte
     as_record* rec = as_record_fromval(val);
     if (rec) {
 
-        result.mutable_header()->set_tag(operation->header().tag());
-        success(result.mutable_status());
+        result::header(operation->header(), result.mutable_header());
+        status::success(result.mutable_status());
         metadata_result(rec, &result);
         key_result(&rec->key, &result, operation->output());
         value_result(rec, &result, operation->output());
@@ -937,28 +905,11 @@ bool gkvs::AerospikeDriver::scan_callback(const as_val* val, scan_context* conte
 }
 
 
-void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::ValueResult *response) {
-
-    // for client identification purpose
-    response->mutable_header()->set_tag(request->header().tag());
-
-    if (!request->has_key()) {
-        bad_request("no key", response->mutable_status());
-        return;
-    }
-
-    // for client identification purpose
-    key_result(request->key(), response, request->output());
+void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, const std::string& table_override, ::gkvs::ValueResult *response) {
 
     StatusErr statusErr;
-    if (!valid_key(request->key(), statusErr)) {
-        statusErr.to_status(response->mutable_status());
-        return;
-    }
-
-
     as_key key;
-    if (!init_key(request->key(), key, statusErr)) {
+    if (!init_key(request->key(), table_override, key, statusErr)) {
         statusErr.to_status(response->mutable_status());
         return;
     }
@@ -972,7 +923,7 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::
     as_error err;
     as_status status;
 
-    if (include_value(request->output())) {
+    if (check::include_value(request->output())) {
         if (request->has_select()) {
             const char** bins = allocate_bins(request->select());
             status = aerospike_key_select(&as_, &err, &pol, &key, bins, &rec);
@@ -995,7 +946,7 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::
 
         }
 
-        success(response->mutable_status());
+        status::success(response->mutable_status());
 
     }
     else if (status == AEROSPIKE_ERR_RECORD_NOT_FOUND) {
@@ -1003,7 +954,7 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::
         // return no record, means no record was found, this is not an error, it is like a map interface for records
         // not like database interface
 
-        success(response->mutable_status());
+        status::success(response->mutable_status());
     }
     else {
         error(err, response->mutable_status());
@@ -1016,25 +967,12 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, ::gkvs::
 
 }
 
-void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::StatusResult *response) {
-
-    // for client identification purpose
-    response->mutable_header()->set_tag(request->header().tag());
-
-    if (!request->has_key()) {
-        bad_request("no key", response->mutable_status());
-        return;
-    }
+void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, const std::string& table_override, ::gkvs::StatusResult *response) {
 
     StatusErr statusErr;
-    if (!valid_key(request->key(), statusErr)) {
-        statusErr.to_status(response->mutable_status());
-        return;
-    }
-
     as_key key;
 
-    if (!init_key(request->key(), key, statusErr)) {
+    if (!init_key(request->key(), table_override, key, statusErr)) {
         statusErr.to_status(response->mutable_status());
         return;
     }
@@ -1045,7 +983,7 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
     as_record* rec = record_ser.unpack_record(val.raw(), single_bin_);
 
     if (0 == as_record_numbins(rec)) {
-        success_not_updated(response->mutable_status());
+        status::success_not_updated(response->mutable_status());
         return;
     }
 
@@ -1093,7 +1031,7 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
 
     if (status == AEROSPIKE_OK) {
 
-        success(response->mutable_status());
+        status::success(response->mutable_status());
 
     }
     else if (status == AEROSPIKE_ERR_RECORD_GENERATION && request->compareandput()) {
@@ -1108,24 +1046,11 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, ::gkvs::
     //as_record_destroy(rec);
 }
 
-void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkvs::StatusResult *response) {
-
-    // for client identification purpose
-    response->mutable_header()->set_tag(request->header().tag());
-
-    if (!request->has_key()) {
-        bad_request("no key", response->mutable_status());
-        return;
-    }
+void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, const std::string& table_override, ::gkvs::StatusResult *response) {
 
     StatusErr statusErr;
-    if (!valid_key(request->key(), statusErr)) {
-        statusErr.to_status(response->mutable_status());
-        return;
-    }
-
     as_key key;
-    if (!init_key(request->key(), key, statusErr)) {
+    if (!init_key(request->key(), table_override, key, statusErr)) {
         statusErr.to_status(response->mutable_status());
         return;
     }
@@ -1170,14 +1095,14 @@ void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, ::gkv
 
     if (status == AEROSPIKE_OK) {
 
-        success(response->mutable_status());
+        status::success(response->mutable_status());
 
     }
     else if (status == AEROSPIKE_ERR_RECORD_NOT_FOUND) {
 
         // this is not an error
 
-        success_not_updated(response->mutable_status());
+        status::success_not_updated(response->mutable_status());
     }
     else {
         error(err, response->mutable_status());

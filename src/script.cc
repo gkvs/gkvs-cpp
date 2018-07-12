@@ -16,7 +16,10 @@
  *
  */
 
-#include "lua_helper.h"
+#include "script.h"
+
+#include <iostream>
+#include <string>
 
 #include <glog/logging.h>
 
@@ -26,6 +29,191 @@
 #if LUA_VERSION_NUM > 501
     #define lua_objlen lua_rawlen
 #endif
+
+// clusterName:string, driver:string, conf:table
+static int gkvs::lua_add_cluster(lua_State *L) {
+
+    int n = lua_gettop(L);
+    if (n < 3) {
+
+        LOG(ERROR) << "lua_add_cluster: wrong number of arguments" << std::endl;
+
+        lua_pushstring(L, "add_cluster: wrong number of arguments");
+        lua_error(L);
+        return 0;
+    }
+
+    size_t len;
+    const char * str = luaL_checklstring(L, 1, &len);
+    std::string cluster(str, len);
+
+    str = luaL_checklstring(L, 2, &len);
+    std::string driver(str, len);
+
+    luaL_checktype(L, 3, LUA_TTABLE);
+    gkvs::lua_ser ser;
+    ser.pack_obj(L, 3);
+
+    std::cout << "[";
+    for (int i = 0; i < ser.size(); ++i) {
+        if (i != 0) {
+            std::cout << ", ";
+        }
+        std::cout << (int) ser.data()[i];
+    }
+    std::cout << "]" << std::endl;
+
+    std::string conf(ser.data(), ser.size());
+
+    std::string error;
+    if (!gkvs::add_cluster(cluster, driver, conf, error)) {
+
+        LOG(ERROR) << "error: " << error << std::endl;
+
+        lua_pushstring(L, "add_cluster: wrong number of arguments");
+        lua_error(L);
+    }
+
+    return 0;
+}
+
+// tableName:string, clusterName:string, conf:table
+static int gkvs::lua_add_table(lua_State *L) {
+
+    int n = lua_gettop(L);
+    if (n < 3) {
+
+        LOG(ERROR) << "lua_add_table: wrong number of arguments" << std::endl;
+
+        lua_pushstring(L, "wrong number of arguments");
+        lua_error(L);
+        return 0;
+    }
+
+    size_t len;
+    const char * str = luaL_checklstring(L, 1, &len);
+    std::string table(str, len);
+
+    str = luaL_checklstring(L, 2, &len);
+    std::string cluster(str, len);
+
+    luaL_checktype(L, 3, LUA_TTABLE);
+    gkvs::lua_ser ser;
+    ser.pack_obj(L, 3);
+
+    std::string conf(ser.data(), ser.size());
+
+    std::string error;
+    if (!gkvs::add_table(table, cluster, conf, error)) {
+
+        LOG(ERROR) << "error: " << error << std::endl;
+
+        lua_pushstring(L, "add_table: wrong number of arguments");
+        lua_error(L);
+    }
+
+    return 0;
+}
+
+// viewName:string, clusterName:string, tableName:string
+static int gkvs::lua_add_view(lua_State *L) {
+
+    int n = lua_gettop(L);
+    if (n < 3) {
+
+        LOG(ERROR) << "lua_add_view: wrong number of arguments" << std::endl;
+
+        lua_pushstring(L, "add_view: wrong number of arguments");
+        lua_error(L);
+        return 0;
+    }
+
+    size_t len;
+    const char * str = luaL_checklstring(L, 1, &len);
+    std::string view(str, len);
+
+    str = luaL_checklstring(L, 2, &len);
+    std::string cluster(str, len);
+
+    str = luaL_checklstring(L, 3, &len);
+    std::string table(str, len);
+
+    std::string error;
+    if (!gkvs::add_view(view, cluster, table, error)) {
+
+        LOG(ERROR) << "error: " << error << std::endl;
+
+        lua_pushstring(L, "add_view: wrong number of arguments");
+        lua_error(L);
+    }
+
+    return 0;
+}
+
+
+gkvs::lua_script::lua_script() {
+
+    L = luaL_newstate();
+
+    lua_register (L, "add_cluster", &gkvs::lua_add_cluster);
+    lua_register (L, "add_table", &gkvs::lua_add_table);
+    lua_register (L, "add_view", &gkvs::lua_add_view);
+
+}
+
+bool gkvs::lua_script::loadfile(const std::string& filename) {
+    if(luaL_loadfile(L, filename.c_str()) || lua_pcall(L, 0, 0, 0)) {
+        LOG(ERROR) << "fail to load LUA script from file: " << filename << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool gkvs::lua_script::loadstring(const std::string& content) {
+    if(luaL_loadstring(L, content.c_str()) || lua_pcall(L, 0, 0, 0)) {
+        LOG(ERROR) << "fail to exec LUA script: " << content << std::endl;
+        return false;
+    }
+    return true;
+}
+
+void gkvs::lua_script::print_error(const std::string& variableName, const std::string& reason) const {
+    LOG(ERROR) <<"can't get ["<< variableName << "]: "<< reason <<std::endl;
+}
+
+bool gkvs::lua_script::lua_gettostack(const std::string& variableName, int& level) const {
+    std::string var = "";
+    for(unsigned int i = 0; i < variableName.size(); i++) {
+        if(variableName.at(i) == '.') {
+            if(level == 0) {
+                lua_getfield(L, LUA_GLOBALSINDEX, var.c_str());
+            } else {
+                lua_getfield(L, -1, var.c_str());
+            }
+
+            if(lua_isnil(L, -1)) {
+                print_error(variableName, var + " is not defined");
+                return false;
+            } else {
+                var = "";
+                level++;
+            }
+        } else {
+            var += variableName.at(i);
+        }
+    }
+    if(level == 0) {
+        lua_getfield(L, LUA_GLOBALSINDEX, var.c_str());
+    } else {
+        lua_getfield(L, -1, var.c_str());
+    }
+    if(lua_isnil(L, -1)) {
+        print_error(variableName, var + " is not defined");
+        return false;
+    }
+
+    return true;
+}
 
 
 void gkvs::lua_ser::unpack_array(const msgpack_object_array& array, lua_State* L) {

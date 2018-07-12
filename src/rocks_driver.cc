@@ -19,6 +19,7 @@
 #include "driver.h"
 #include "rocks_driver.h"
 
+#include <glog/logging.h>
 
 #include <nlohmann/json.hpp>
 
@@ -32,6 +33,8 @@ namespace gkvs {
     public:
 
         explicit RocksDriver(const std::string& name, const json &conf, const std::string& db_dir) : Driver(name) {
+
+            LOG(INFO) << "rocks conf = " << conf << std::endl;
 
             Options options;
             options.IncreaseParallelism();
@@ -87,34 +90,37 @@ namespace gkvs {
 
         }
 
+        bool add_table(const std::string& table, const json& conf, std::string& error) override {
+            return true;
+        }
 
-        void get(const KeyOperation *request, ValueResult *response) override {
+        void get(const KeyOperation *request, const std::string& table_override, ValueResult *response) override {
 
-            do_get(request, response);
+            do_get(request, table_override, response);
 
         }
 
-        void multiGet(const BatchKeyOperation *request, BatchValueResult *response) override {
+        void multiGet(const std::vector<MultiGetEntry>& entries) override {
 
-            do_multi_get(request, response);
-
-        }
-
-        void scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer) override {
-
-            do_scan(request, writer);
+            do_multi_get(entries);
 
         }
 
-        void put(const PutOperation *request, StatusResult *response) override {
+        void scan(const ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<ValueResult> *writer) override {
 
-            do_put(request, response);
+            do_scan(request, table_override, writer);
 
         }
 
-        void remove(const KeyOperation *request, StatusResult *response) override {
+        void put(const PutOperation *request, const std::string& table_override, StatusResult *response) override {
 
-            do_remove(request, response);
+            do_put(request, table_override, response);
+
+        }
+
+        void remove(const KeyOperation *request, const std::string& table_override, StatusResult *response) override {
+
+            do_remove(request, table_override, response);
 
         }
 
@@ -125,17 +131,17 @@ namespace gkvs {
 
     protected:
 
-        void do_multi_get(const BatchKeyOperation *request, BatchValueResult *response);
+        void do_multi_get(const std::vector<MultiGetEntry>& entries);
 
-        void do_scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer);
+        void do_scan(const ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<ValueResult> *writer);
 
         void send_result(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer, Slice& key, Slice& value);
 
-        void do_get(const KeyOperation *request, ValueResult *response);
+        void do_get(const KeyOperation *request, const std::string& table_override, ValueResult *response);
 
-        void do_put(const PutOperation *request, StatusResult *response);
+        void do_put(const PutOperation *request, const std::string& table_override, StatusResult *response);
 
-        void do_remove(const KeyOperation *request, StatusResult *response);
+        void do_remove(const KeyOperation *request, const std::string& table_override, StatusResult *response);
 
         void metadata_result(const uint64_t* verOrNull, int ttl, Metadata *metadata) {
 
@@ -170,7 +176,7 @@ namespace gkvs {
 
         void key_result(const Slice& sliceKey, gkvs::ValueResult* result, const OutputOptions &out) {
 
-            bool includeKey = include_key(out);
+            bool includeKey = check::include_key(out);
 
             if (includeKey) {
                 result->mutable_key()->set_raw(sliceKey.data(), sliceKey.size());
@@ -178,19 +184,9 @@ namespace gkvs {
 
         }
 
-        void key_result(const Key& operationKey, gkvs::ValueResult* result, const OutputOptions &out) {
-
-            bool includeKey = include_key(out);
-
-            if (includeKey) {
-                result->mutable_key()->CopyFrom(operationKey);
-            }
-
-        }
-
         void value_result(const Slice& sliceValue, gkvs::Value *value, const OutputOptions &out) {
 
-            if (include_value(out)) {
+            if (check::include_value(out)) {
                 value->set_raw(sliceValue.data(), sliceValue.size());
             }
 
@@ -208,17 +204,7 @@ namespace gkvs {
 }
 
 
-void gkvs::RocksDriver::do_scan(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer) {
-
-    const std::string &tableName = request->tablename();
-
-    if (tableName.empty()) {
-        ValueResult result;
-        result.mutable_header()->set_tag(request->header().tag());
-        bad_request("empty table name", result.mutable_status());
-        writer->WriteLast(result, grpc::WriteOptions());
-        return;
-    }
+void gkvs::RocksDriver::do_scan(const ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<ValueResult> *writer) {
 
     Iterator* iterator = db_->NewIterator(ReadOptions());
 
@@ -241,7 +227,7 @@ void gkvs::RocksDriver::do_scan(const ScanOperation *request, ::grpc::ServerWrit
 void gkvs::RocksDriver::send_result(const ScanOperation *request, ::grpc::ServerWriter<ValueResult> *writer, Slice& key, Slice& value) {
 
     ValueResult response;
-    response.mutable_header()->set_tag(request->header().tag());
+    result::header(request->header(), response.mutable_header());
 
     response.mutable_metadata()->set_ttl(100);
     response.mutable_metadata()->add_version(1);
@@ -249,20 +235,20 @@ void gkvs::RocksDriver::send_result(const ScanOperation *request, ::grpc::Server
     metadata_result(nullptr, -1, response.mutable_metadata());
     key_result(key, &response, request->output());
     value_result(value, response.mutable_value(), request->output());
-    success(response.mutable_status());
+    status::success(response.mutable_status());
 
     writer->Write(response, grpc::WriteOptions());
 
 }
 
 
-void gkvs::RocksDriver::do_multi_get(const BatchKeyOperation *request, BatchValueResult *response) {
+void gkvs::RocksDriver::do_multi_get(const std::vector<MultiGetEntry>& entries) {
 
     std::vector<Slice> keys;
-    int size = request->operation_size();
+    int size = entries.size();
 
     for (int i = 0; i < size; ++i) {
-        keys.push_back(request->operation(i).key().raw());
+        keys.push_back(entries[i].get_request().key().raw());
     }
 
     std::vector<std::string> values;
@@ -270,50 +256,39 @@ void gkvs::RocksDriver::do_multi_get(const BatchKeyOperation *request, BatchValu
 
     for (int i = 0; i < size; ++i) {
 
-        ValueResult* result = response->add_result();
+        const KeyOperation& keyOperation = entries[i].get_request();
+        ValueResult* result = entries[i].get_response();
 
         rocksdb::Status& status = statuses[i];
-        const KeyOperation& keyOperation = request->operation(i);
         std::string& value = values[i];
-
-        result->mutable_header()->set_tag(keyOperation.header().tag());
-        key_result(keyOperation.key(), result, keyOperation.output());
 
         if (status.ok()) {
             metadata_result(nullptr, -1, result->mutable_metadata());
             value_result(value, result->mutable_value(), keyOperation.output());
-            success(result->mutable_status());
+            status::success(result->mutable_status());
         }
         else if (status.IsNotFound()) {
-            success(result->mutable_status());
+            status::success(result->mutable_status());
         }
         else {
-            driver_error(status.ToString().c_str(), result->mutable_status());
+            status::driver_error(status.ToString().c_str(), result->mutable_status());
         }
 
     }
 
 }
 
-void gkvs::RocksDriver::do_get(const KeyOperation *request, ValueResult *response) {
-
-    response->mutable_header()->set_tag(request->header().tag());
-    key_result(request->key(), response, request->output());
-
-    if (!request->has_key()) {
-        bad_request("no key", response->mutable_status());
-        return;
-    }
+void gkvs::RocksDriver::do_get(const KeyOperation *request, const std::string& table_override, ValueResult *response) {
 
     if (request->key().recordKey_case() != Key::RecordKeyCase::kRaw) {
-        bad_request("key must be raw", response->mutable_status());
+        status::bad_request("key must be raw", response->mutable_status());
         return;
     }
 
-    const std::string& tableName = request->key().tablename();
+    const std::string& tableName = table_override;
 
     if (tableName.empty()) {
-        bad_request("empty table name", response->mutable_status());
+        status::bad_request("empty table name", response->mutable_status());
         return;
     }
 
@@ -326,35 +301,28 @@ void gkvs::RocksDriver::do_get(const KeyOperation *request, ValueResult *respons
     if (status.ok()) {
         metadata_result(nullptr, -1, response->mutable_metadata());
         value_result(value, response->mutable_value(), request->output());
-        success(response->mutable_status());
+        status::success(response->mutable_status());
     }
     else if (status.IsNotFound()) {
-        success(response->mutable_status());
+        status::success(response->mutable_status());
     }
     else {
-        driver_error(status.ToString().c_str(), response->mutable_status());
+        status::driver_error(status.ToString().c_str(), response->mutable_status());
     }
 
 }
 
-void gkvs::RocksDriver::do_put(const PutOperation *request, StatusResult *response) {
-
-    response->mutable_header()->set_tag(request->header().tag());
-
-    if (!request->has_key()) {
-        bad_request("no key", response->mutable_status());
-        return;
-    }
+void gkvs::RocksDriver::do_put(const PutOperation *request, const std::string& table_override, StatusResult *response) {
 
     if (request->key().recordKey_case() != Key::RecordKeyCase::kRaw) {
-        bad_request("key must be raw", response->mutable_status());
+        status::bad_request("key must be raw", response->mutable_status());
         return;
     }
 
-    const std::string& tableName = request->key().tablename();
+    const std::string& tableName = table_override;
 
     if (tableName.empty()) {
-        bad_request("empty table name", response->mutable_status());
+        status::bad_request("empty table name", response->mutable_status());
         return;
     }
 
@@ -362,7 +330,7 @@ void gkvs::RocksDriver::do_put(const PutOperation *request, StatusResult *respon
     const std::string& value = request->value().raw();
 
     if (request->compareandput()) {
-        unsupported("RocksDB driver does not support compare and put", response->mutable_status());
+        status::unsupported("RocksDB driver does not support compare and put", response->mutable_status());
         return;
     }
 
@@ -371,33 +339,26 @@ void gkvs::RocksDriver::do_put(const PutOperation *request, StatusResult *respon
 
     if (status.ok()) {
 
-        success(response->mutable_status());
+        status::success(response->mutable_status());
 
     }
     else {
-        driver_error(status.ToString().c_str(), response->mutable_status());
+        status::driver_error(status.ToString().c_str(), response->mutable_status());
     }
 
 }
 
-void gkvs::RocksDriver::do_remove(const KeyOperation *request, StatusResult *response) {
-
-    response->mutable_header()->set_tag(request->header().tag());
-
-    if (!request->has_key()) {
-        bad_request("no key", response->mutable_status());
-        return;
-    }
+void gkvs::RocksDriver::do_remove(const KeyOperation *request, const std::string& table_override, StatusResult *response) {
 
     if (request->key().recordKey_case() != Key::RecordKeyCase::kRaw) {
-        bad_request("key must be raw", response->mutable_status());
+        status::bad_request("key must be raw", response->mutable_status());
         return;
     }
 
-    const std::string& tableName = request->key().tablename();
+    const std::string& tableName = table_override;
 
     if (tableName.empty()) {
-        bad_request("empty table name", response->mutable_status());
+        status::bad_request("empty table name", response->mutable_status());
         return;
     }
 
@@ -407,11 +368,11 @@ void gkvs::RocksDriver::do_remove(const KeyOperation *request, StatusResult *res
 
     if (status.ok()) {
 
-        success(response->mutable_status());
+        status::success(response->mutable_status());
 
     }
     else {
-        driver_error(status.ToString().c_str(), response->mutable_status());
+        status::driver_error(status.ToString().c_str(), response->mutable_status());
     }
 
 }
