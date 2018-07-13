@@ -70,6 +70,12 @@ namespace gkvs {
             _errorMessage = errorMessage;
         }
 
+        void resource(const char* errorMessage) {
+            _statusCode = StatusCode::ERROR_RESOURCE;
+            _errorCode = -1;
+            _errorMessage = errorMessage;
+        }
+
         void driver_error(const char* errorMessage) {
             _statusCode = StatusCode::ERROR_DRIVER;
             _errorCode = -1;
@@ -244,7 +250,7 @@ namespace gkvs {
 
         virtual bool add_table(const std::string& table, const json& conf, std::string& error) = 0;
 
-        inline const std::string& get_name() {
+        inline const std::string& get_name() const {
             return name_;
         }
 

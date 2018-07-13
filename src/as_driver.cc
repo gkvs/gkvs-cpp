@@ -59,6 +59,75 @@ namespace gkvs {
 
     static bool to_record_callback (const as_val * key, const as_val * value, void * udata);
 
+    class AerospikeSet final {
+
+    public:
+
+        explicit AerospikeSet(const std::string& set) : set_(set) {
+        }
+
+        bool configure(const json& conf, std::string& error) {
+
+            auto i = conf.find("namespace");
+
+            if (i == conf.end()) {
+                error = "namespace is empty";
+                return false;
+            }
+
+            namespace_ = i->get<std::string>();
+
+            i = conf.find("single_bin");
+
+            if (i != conf.end()) {
+                single_bin_ = i->get<bool>();
+            }
+
+            i = conf.find("ttl");
+
+            if (i != conf.end()) {
+                ttl_ = i->get<int>();
+            }
+
+            i = conf.find("timeout");
+
+            if (i != conf.end()) {
+                timeout_ = i->get<int>();
+            }
+
+            return true;
+
+        }
+
+        const std::string& get_set() const {
+            return set_;
+        }
+
+        const std::string& get_namespace() const {
+            return namespace_;
+        }
+
+        bool is_single_bin() const {
+            return single_bin_;
+        }
+
+        int get_ttl() const {
+            return ttl_;
+        }
+
+        int get_timeout() const {
+            return timeout_;
+        }
+
+    private:
+
+        std::string set_;
+        std::string namespace_;
+        bool single_bin_;
+        int ttl_;
+        int timeout_;
+
+    };
 
     class AerospikeDriver final : public Driver {
 
@@ -96,9 +165,6 @@ namespace gkvs {
             as_config config;
             as_config_init(&config);
             config.fail_if_not_connected = false;
-
-            namespace_ = "test";
-            single_bin_ = false;
 
             auto hosts_it = conf.find("hosts");
 
@@ -184,6 +250,22 @@ namespace gkvs {
         }
 
         bool add_table(const std::string& table, const json& conf, std::string& error) override {
+
+            auto i = sets_.find(table);
+
+            if (i != sets_.end()) {
+                error = "table '" + table +"' already exists in " + get_name();
+                return false;
+            }
+
+            std::shared_ptr<AerospikeSet> set(new AerospikeSet(table));
+
+            if (!set->configure(conf, error)) {
+                return false;
+            }
+
+            sets_[table] = set;
+
             return true;
         }
 
@@ -220,8 +302,9 @@ namespace gkvs {
 
     private:
 
+        std::unordered_map<std::string, std::shared_ptr<AerospikeSet>> sets_;
+
         aerospike as_;
-        std::string namespace_;
         uint32_t max_retries_ = 1;
         uint32_t sleep_between_retries_ = 1;
         as_policy_consistency_level consistency_level_ = AS_POLICY_CONSISTENCY_LEVEL_ALL;
@@ -230,7 +313,6 @@ namespace gkvs {
         as_policy_replica replica_ = AS_POLICY_REPLICA_SEQUENCE;
         uint32_t min_concurrent_batch_size_ = 5;
         bool durable_delete_ = false;
-        bool single_bin_ = false;
 
 
     protected:
@@ -338,21 +420,27 @@ namespace gkvs {
             status->set_errorcode(code);
         }
 
-        bool init_key(const Key &requestKey, const std::string& table_override, as_key& key, StatusErr& statusErr) {
+        bool init_key(const Key &requestKey, const std::string& table_override, as_key& key, std::shared_ptr<AerospikeSet>& set, StatusErr& statusErr) {
 
-            const std::string& tableName = table_override;
-
-            if (tableName.empty()) {
+            if (table_override.empty()) {
                 statusErr.bad_request("empty table name");
                 return false;
             }
+
+            auto i = sets_.find(table_override);
+            if (i == sets_.end()) {
+                statusErr.resource("table not found");
+                return false;
+            }
+
+            set = i->second;
 
             switch(requestKey.recordKey_case()) {
 
                 case Key::RecordKeyCase::kRaw: {
                     const uint8_t* value = (const uint8_t*) requestKey.raw().c_str();
                     uint32_t len = static_cast<uint32_t>(requestKey.raw().length());
-                    if (!as_key_init_rawp(&key, namespace_.c_str(), tableName.c_str(), value, len, false)) {
+                    if (!as_key_init_rawp(&key, set->get_namespace().c_str(), set->get_set().c_str(), value, len, false)) {
                         statusErr.driver_error("as_key_init_raw fail");
                         return false;
                     }
@@ -365,7 +453,7 @@ namespace gkvs {
                         return false;
                     }
                     const uint8_t *value = (const uint8_t *) requestKey.digest().c_str();
-                    if (!as_key_init_digest(&key, namespace_.c_str(), tableName.c_str(), value)) {
+                    if (!as_key_init_digest(&key, set->get_namespace().c_str(), set->get_set().c_str(), value)) {
                         statusErr.driver_error("as_key_init_digest fail");
                         return false;
                     }
@@ -459,19 +547,15 @@ namespace gkvs {
 
         }
 
-        void value_result(as_record *rec, ValueResult *result, const OutputOptions &out) {
+        void value_result(as_record *rec, ValueResult *result, const OutputOptions &out, bool single_bin) {
 
-            bool includeValue = check::include_value(out);
+            if (check::include_value(out)) {
+                as_record_ser ser;
 
-            if (!includeValue) {
-                return;
+                size_t pos = ser.pack_record(rec, single_bin);
+
+                result->mutable_value()->set_raw(ser.data(), ser.size());
             }
-
-            as_record_ser ser;
-
-            size_t pos = ser.pack_record(rec, single_bin_);
-
-            result->mutable_value()->set_raw(ser.data(), ser.size());
 
         }
 
@@ -484,6 +568,7 @@ namespace gkvs {
 
             AerospikeDriver* driver;
             const std::vector<MultiGetEntry>& entries;
+            std::vector<std::shared_ptr<AerospikeSet>> sets;
             std::unordered_map<const as_key*, int, as_key_hash, as_key_equal> key_map;
 
         };
@@ -504,6 +589,7 @@ namespace gkvs {
             AerospikeDriver* instance;
             grpc::ServerWriter<::gkvs::ValueResult> *writer;
             const ScanOperation* operation;
+            bool single_bin;
             mutable std::mutex scan_mutex;
 
         };
@@ -718,8 +804,10 @@ void gkvs::AerospikeDriver::do_multi_get(const std::vector<MultiGetEntry>& entri
 
     for (uint32_t i = 0; i < size; ++i) {
 
-        const KeyOperation &operation = entries[i].get_request();
-        const std::string& table_override = entries[i].get_table_override();
+        context.sets.push_back(std::shared_ptr<AerospikeSet>());
+
+        const MultiGetEntry& entry = entries[i];
+        const KeyOperation &operation = entry.get_request();
 
         if (operation.has_header() && operation.header().timeout() > max_timeout) {
             max_timeout = operation.header().timeout();
@@ -727,9 +815,8 @@ void gkvs::AerospikeDriver::do_multi_get(const std::vector<MultiGetEntry>& entri
 
         StatusErr statusErr;
         as_key *key = as_batch_keyat(&batch, actual_size);
-        if (!init_key(operation.key(), table_override,  *key, statusErr)) {
-            ValueResult *result = entries[i].get_response();
-            statusErr.to_status(result->mutable_status());
+        if (!init_key(operation.key(), entry.get_table_override(), *key, context.sets[i], statusErr)) {
+            statusErr.to_status(entry.get_response()->mutable_status());
             continue;
         }
 
@@ -802,14 +889,18 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
         auto k = context->key_map.find(key);
         if (k == context->key_map.end()) {
             char* pstr = as_val_tostring(key->valuep);
-            LOG(ERROR) << "operation not found for key: " << pstr << std::endl;
-            cf_free(pstr);
+            if (pstr) {
+                LOG(ERROR) << "operation not found for key: " << pstr << std::endl;
+                cf_free(pstr);
+            }
             continue;
         }
 
         int pos = k->second;
-        const KeyOperation& operation =  context->entries[pos].get_request();
-        ValueResult *result = context->entries[pos].get_response();
+        const MultiGetEntry& entry = context->entries[pos];
+        const std::shared_ptr<AerospikeSet> set = context->sets[pos];
+        const KeyOperation& operation =  entry.get_request();
+        ValueResult *result = entry.get_response();
 
         as_status status = results[i].result;
 
@@ -818,7 +909,7 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
             const as_record *rec = &results[i].record;
 
             metadata_result(const_cast<as_record *>(rec), result);
-            value_result(const_cast<as_record *>(rec), result, operation.output());
+            value_result(const_cast<as_record *>(rec), result, operation.output(), set->is_single_bin());
 
             status::success(result->mutable_status());
 
@@ -841,12 +932,22 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
 
 void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<::gkvs::ValueResult> *writer) {
 
-    as_error err;
-    scan_context context { this, writer, request };
+    auto i = sets_.find(table_override);
+    if (i == sets_.end()) {
+        ValueResult result;
+        result::header(request->header(), result.mutable_header());
+        status::error_resource("set not found", result.mutable_status());
+        writer->WriteLast(result, grpc::WriteOptions());
+        return;
+    }
+
+    std::shared_ptr<AerospikeSet> set = i->second;
+
+    scan_context context { this, writer, request, set->is_single_bin() };
 
     as_scan scan;
-    as_scan_init(&scan, namespace_.c_str(), table_override.c_str());
-    scan.deserialize_list_map = false;
+    as_scan_init(&scan, set->get_namespace().c_str(), set->get_set().c_str());
+    scan.deserialize_list_map = true;
 
     if (!check::include_value(request->output())) {
         as_scan_set_nobins(&scan, true);
@@ -867,7 +968,15 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, const 
     as_policy_scan pol;
     init_scan_policy(&pol);
 
-    aerospike_scan_foreach(&as_, &err, &pol, &scan, static_scan_callback, &context);
+    as_error err;
+    as_status status = aerospike_scan_foreach(&as_, &err, &pol, &scan, static_scan_callback, &context);
+
+    if (status != AEROSPIKE_OK) {
+        ValueResult result;
+        result::header(request->header(), result.mutable_header());
+        error(err, result.mutable_status());
+        writer->WriteLast(result, grpc::WriteOptions());
+    }
 
     as_scan_destroy(&scan);
 
@@ -894,7 +1003,7 @@ bool gkvs::AerospikeDriver::scan_callback(const as_val* val, scan_context* conte
         status::success(result.mutable_status());
         metadata_result(rec, &result);
         key_result(&rec->key, &result, operation->output());
-        value_result(rec, &result, operation->output());
+        value_result(rec, &result, operation->output(), context->single_bin);
 
 
         std::lock_guard< std::mutex > guard( context->scan_mutex );
@@ -907,14 +1016,15 @@ bool gkvs::AerospikeDriver::scan_callback(const as_val* val, scan_context* conte
 
 void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, const std::string& table_override, ::gkvs::ValueResult *response) {
 
+    std::shared_ptr<AerospikeSet> set;
     StatusErr statusErr;
     as_key key;
-    if (!init_key(request->key(), table_override, key, statusErr)) {
+    if (!init_key(request->key(), table_override, key, set, statusErr)) {
         statusErr.to_status(response->mutable_status());
         return;
     }
 
-    uint32_t timeout = request->has_header() ? request->header().timeout() : 0;
+    uint32_t timeout = request->has_header() ? request->header().timeout() : set->get_timeout();
 
     as_policy_read pol;
     init_read_policy(timeout, &pol);
@@ -942,7 +1052,7 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, const st
         if (rec) {
 
             metadata_result(rec, response);
-            value_result(rec, response, request->output());
+            value_result(rec, response, request->output(), set->is_single_bin());
 
         }
 
@@ -969,10 +1079,11 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, const st
 
 void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, const std::string& table_override, ::gkvs::StatusResult *response) {
 
+    std::shared_ptr<AerospikeSet> set;
     StatusErr statusErr;
     as_key key;
 
-    if (!init_key(request->key(), table_override, key, statusErr)) {
+    if (!init_key(request->key(), table_override, key, set, statusErr)) {
         statusErr.to_status(response->mutable_status());
         return;
     }
@@ -980,7 +1091,7 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, const st
     const Value& val = request->value();
 
     gkvs::as_record_ser record_ser;
-    as_record* rec = record_ser.unpack_record(val.raw(), single_bin_);
+    as_record* rec = record_ser.unpack_record(val.raw(), set->is_single_bin());
 
     if (0 == as_record_numbins(rec)) {
         status::success_not_updated(response->mutable_status());
@@ -993,6 +1104,9 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, const st
     init_write_policy(timeout, &pol);
 
     int ttl = request->ttl();
+    if (ttl == 0) {
+        ttl = set->get_ttl();
+    }
     if (ttl > 0) {
         rec->ttl = static_cast<uint32_t>(ttl);
     }
@@ -1048,19 +1162,20 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, const st
 
 void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, const std::string& table_override, ::gkvs::StatusResult *response) {
 
+    std::shared_ptr<AerospikeSet> set;
     StatusErr statusErr;
     as_key key;
-    if (!init_key(request->key(), table_override, key, statusErr)) {
+    if (!init_key(request->key(), table_override, key, set, statusErr)) {
         statusErr.to_status(response->mutable_status());
         return;
     }
+
+    uint32_t timeout = request->has_header() ? request->header().timeout() : set->get_timeout();
 
     as_error err;
     as_status status;
 
     if (request->has_select()) {
-
-        uint32_t timeout = request->has_header() ? request->header().timeout() : 0;
 
         as_policy_write pol;
         init_write_policy(timeout, &pol);
@@ -1083,8 +1198,6 @@ void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, const
     else {
 
         // remove the whole record
-
-        uint32_t timeout = request->has_header() ? request->header().timeout() : 0;
 
         as_policy_remove pol;
         init_remove_policy(timeout, &pol);
