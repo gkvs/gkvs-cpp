@@ -43,8 +43,13 @@ PIT (Point In Time) support if configured:
 
 Build and install in local system:
 * Protobuf 3.5.1
-* GRPC
+* GRPC 1.2.0
 * Aerospike Client
+* Redis
+* RocksDB
+* LuaJIT
+* Msgpack
+* LZ4, ZSDT, Snappy, BZ2, Z
 
 Build the project:
 ```
