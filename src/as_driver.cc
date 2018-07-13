@@ -63,8 +63,13 @@ namespace gkvs {
 
     public:
 
-        explicit AerospikeSet(const std::string& set) : set_(set) {
-        }
+        explicit AerospikeSet(const std::string& set) :
+                set_(set),
+                namespace_("test"),
+                single_bin_(false),
+                ttl_(0),
+                timeout_(0)
+        {}
 
         bool configure(const json& conf, std::string& error) {
 
@@ -133,25 +138,28 @@ namespace gkvs {
 
     public:
 
-        explicit AerospikeDriver(const std::string& name, const json &conf, const std::string &lua_dir) : Driver(name) {
-
-            LOG(INFO) << "aerospike conf = " << conf << std::endl;
-
-            //json conf = nlohmann::json::parse(conf_str.begin(), conf_str.end());
+        explicit AerospikeDriver(const std::string& name, const std::string &lua_dir)
+                : Driver(name), lua_dir_(lua_dir) {
 
             as_log_set_callback(glog_callback);
 
+        }
+
+        bool configure(const json &conf, std::string& error) override {
+
+            LOG(INFO) << "aerospike[" << get_name() << "] configure=" << conf << std::endl;
 
             // Initialize default lua configuration.
             as_config_lua lua;
             as_config_lua_init(&lua);
 
-            if (!lua_dir.empty()) {
+            if (!lua_dir_.empty()) {
 
-                if (lua_dir.length() < (AS_CONFIG_PATH_MAX_SIZE - 1)) {
-                    strncpy(lua.user_path, lua_dir.c_str(), AS_CONFIG_PATH_MAX_SIZE);
+                if (lua_dir_.length() < (AS_CONFIG_PATH_MAX_SIZE - 1)) {
+                    strncpy(lua.user_path, lua_dir_.c_str(), AS_CONFIG_PATH_MAX_SIZE);
                 } else {
-                    LOG(ERROR) << "lua_dir is too long: " << lua_dir;
+                    error = "lua_dir is too long: " + lua_dir_;
+                    return false;
                 }
 
             }
@@ -164,6 +172,8 @@ namespace gkvs {
 
             as_config config;
             as_config_init(&config);
+
+            // continue operate
             config.fail_if_not_connected = false;
 
             auto hosts_it = conf.find("hosts");
@@ -185,11 +195,14 @@ namespace gkvs {
                     LOG(INFO) << "Aerospike connect to " << host << ":" << port << std::endl;
 
                     if (! as_config_add_hosts(&config, host.c_str(), (uint16_t) port)) {
-                        LOG(ERROR) << "invalid endpoint: " << host << ":" << port << std::endl;
+
+                        std::stringstream ss;
+                        ss << "invalid endpoint: " << host << ":" << port;
+                        error = ss.str();
+                        return false;
                     }
 
                 }
-
 
             }
 
@@ -205,7 +218,7 @@ namespace gkvs {
             if (tls_it != conf.end()) {
                 json tls = *tls_it;
 
-                std::cout << "tls: " << tls << std::endl;
+                LOG(INFO) << "tls: " << tls << std::endl;
 
                 config.tls.enable = true;
                 config.tls.log_session_info = true;
@@ -228,13 +241,22 @@ namespace gkvs {
 
             aerospike_init(&as_, &config);
 
-            as_error err;
+            return true;
 
+        }
+
+        bool connect(std::string& error) override {
+
+            as_error err;
             if (aerospike_connect(&as_, &err) != AEROSPIKE_OK) {
-                LOG(ERROR) << "aerospike_connect code: " << err.code << ", message:" << err.message << std::endl;
-                throw std::invalid_argument( "aerospike_connect" );
+                std::stringstream ss;
+                ss <<  "aerospike_connect code: " << err.code << ", message:" << err.message << std::endl;
+                error = ss.str();
+                LOG(ERROR) << error;
+                return false;
             }
 
+            return true;
         }
 
         ~AerospikeDriver() override {
@@ -301,6 +323,8 @@ namespace gkvs {
 
 
     private:
+
+        std::string lua_dir_;
 
         std::unordered_map<std::string, std::shared_ptr<AerospikeSet>> sets_;
 
@@ -614,8 +638,8 @@ namespace gkvs {
 
     };
 
-    Driver* create_aerospike_driver(const std::string &name, const json& conf, const std::string &lua_dir) {
-        return new AerospikeDriver(name, conf, lua_dir);
+    Driver* create_aerospike_driver(const std::string &name, const std::string &lua_dir) {
+        return new AerospikeDriver(name, lua_dir);
     }
 
 

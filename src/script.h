@@ -167,8 +167,11 @@ namespace gkvs {
 
     public:
 
-        explicit lua_ser() : sbuf_free_(false), sbuf_pos_(0), mempool_free_(false) {
-        }
+        explicit lua_ser() :
+                sbuf_free_(false),
+                sbuf_pos_(0),
+                mempool_free_(false)
+        {}
 
         ~lua_ser() {
             if (sbuf_free_) {

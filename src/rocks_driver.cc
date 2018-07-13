@@ -32,17 +32,19 @@ namespace gkvs {
 
     public:
 
-        explicit RocksDriver(const std::string& name, const json &conf, const std::string& db_dir) : Driver(name) {
+        explicit RocksDriver(const std::string& name, const std::string& db_dir) : Driver(name), db_dir_(db_dir) {
+        }
 
-            LOG(INFO) << "rocks conf = " << conf << std::endl;
+        bool configure(const json &conf, std::string& error) override {
 
-            Options options;
-            options.IncreaseParallelism();
-            options.OptimizeLevelStyleCompaction();
-            options.create_if_missing = true;
-            options.create_missing_column_families= true;
+            LOG(INFO) << "rocksdb[" << get_name() << "] configure=" << conf << std::endl;
 
-            options.compression = kBZip2Compression;
+            options_.IncreaseParallelism();
+            options_.OptimizeLevelStyleCompaction();
+            options_.create_if_missing = true;
+            options_.create_missing_column_families= true;
+
+            options_.compression = kBZip2Compression;
 
             auto db_paths_it = conf.find("db_paths");
             if (db_paths_it != conf.end()) {
@@ -57,29 +59,36 @@ namespace gkvs {
                     std::string path = path_it->get<std::string>();
                     uint64_t target_size = target_size_it->get<uint64_t>();
 
-                    options.db_paths.push_back(DbPath(path, target_size));
+                    options_.db_paths.push_back(DbPath(path, target_size));
                 }
             }
 
             auto db_log_dir_it = conf.find("db_log_dir");
             if (db_log_dir_it != conf.end()) {
-                options.db_log_dir = db_log_dir_it->get<std::string>();
+                options_.db_log_dir = db_log_dir_it->get<std::string>();
             }
 
             auto wal_dir_it = conf.find("wal_dir");
             if (wal_dir_it != conf.end()) {
-                options.wal_dir = wal_dir_it->get<std::string>();
+                options_.wal_dir = wal_dir_it->get<std::string>();
             }
+
+            return true;
+
+        }
+
+        bool connect(std::string& error) override {
 
             std::string testDb = "test";
 
-            rocksdb::Status s = DB::Open(options, testDb.c_str(), &db_);
+            rocksdb::Status s = DB::Open(options_, testDb.c_str(), &db_);
 
             if (!s.ok()) {
-                throw std::runtime_error("fail to open db: test, " + s.ToString());
+                error = s.ToString();
+                return false;
             }
 
-
+            return true;
         }
 
         ~RocksDriver() override {
@@ -127,7 +136,9 @@ namespace gkvs {
 
     private:
 
+        std::string db_dir_;
         DB* db_;
+        Options options_;
 
     protected:
 
@@ -195,10 +206,9 @@ namespace gkvs {
     };
 
 
-    Driver* create_rocks_driver(const std::string &name, const json& conf, const std::string &db_dir) {
-        return new RocksDriver(name, conf, db_dir);
+    Driver* create_rocks_driver(const std::string &name, const std::string &db_dir) {
+        return new RocksDriver(name, db_dir);
     }
-
 
 
 }

@@ -242,6 +242,9 @@ namespace gkvs {
         }
         virtual ~Driver() = default;
 
+        virtual bool configure(const json &conf, std::string& error) = 0;
+        virtual bool connect(std::string& error) = 0;
+
         virtual void get(const KeyOperation* request, const std::string& table_override, ValueResult* response) = 0;
         virtual void multiGet(const std::vector<MultiGetEntry>& entries) = 0;
         virtual void scan(const ScanOperation* request, const std::string& table_override, ::grpc::ServerWriter< ValueResult>* writer) = 0;
@@ -263,13 +266,13 @@ namespace gkvs {
     };
 
     // conf_str is the json config
-    Driver* create_aerospike_driver(const std::string& name, const json& conf, const std::string& lua_path);
+    Driver* create_aerospike_driver(const std::string& name, const std::string& lua_path);
 
     bool as_run_tests();
 
-    Driver* create_redis_driver(const std::string& name, const json& conf);
+    Driver* create_redis_driver(const std::string& name);
 
-    Driver* create_rocks_driver(const std::string& name, const json& conf, const std::string& work_dir);
+    Driver* create_rocks_driver(const std::string& name, const std::string& work_dir);
 
 }
 

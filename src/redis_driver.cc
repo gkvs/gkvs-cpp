@@ -37,9 +37,12 @@ namespace gkvs {
 
     public:
 
-        explicit RedisDriver(const std::string& name, const json& conf) : Driver(name) {
+        explicit RedisDriver(const std::string& name) : Driver(name) {
+        }
 
-            LOG(INFO) << "redis conf = " << conf << std::endl;
+        bool configure(const json& conf, std::string& error) override {
+
+            LOG(INFO) << "redis[" << get_name() << "] configure=" << conf << std::endl;
 
             auto host_it = conf.find("host");
             auto port_it = conf.find("port");
@@ -47,26 +50,39 @@ namespace gkvs {
             hostname_ = host_it != conf.end() ? host_it->get<std::string>() : "127.0.0.1";
             port_ = port_it != conf.end() ? port_it->get<int>() : 6379;
 
+            return true;
+
+        }
+
+        bool connect(std::string& error) override {
+
             LOG(INFO) << "Redis connect to " << hostname_ << ":" << port_ << std::endl;
 
             context_ = redisConnect(hostname_.c_str(), port_);
 
-            if (context_ == nullptr || context_->err) {
-                if (context_) {
-                    std::cout << "Connection error: " << context_->errstr << std::endl;
-                    redisFree(context_);
-                } else {
-                    std::cout << "Connection error: can't allocate redis context" << std::endl;
+            if (context_) {
+
+                if (context_->err) {
+                    error = "connection error for " + get_name() + ", err=" + context_->errstr;
+                    return false;
                 }
+
+            }
+            else {
+                error =  "can't allocate redis context for " + get_name();
+                return false;
             }
 
             redisEnableKeepAlive(context_);
 
+            return true;
         }
 
         ~RedisDriver() override {
 
-            redisFree(context_);
+            if (context_ != nullptr) {
+                redisFree(context_);
+            }
 
             std::cout << "Graceful shutdown redis connection" << std::endl;
 
@@ -176,8 +192,8 @@ namespace gkvs {
     };
 
 
-    Driver* create_redis_driver(const std::string &name, const json& conf) {
-        return new RedisDriver(name, conf);
+    Driver* create_redis_driver(const std::string &name) {
+        return new RedisDriver(name);
     }
 
 
