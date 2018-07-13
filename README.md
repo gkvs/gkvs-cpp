@@ -2,46 +2,45 @@
 Generic Key-Value Storage
 
 ### Vision
-* Federated tables
-* Zero-config
-* Written on C/C++ (for 5 nines and low latency)
-* Network interface GRPC (Sync and Async)
-* All client languages are supported
+* Federated tables (external clusters: Aerospike, Redis)
+* Internal tables (engine: RocksDB)
+* Zero-config (everything configured by Lua scripts, supports remote config)
+* Server written on C/C++, client on Java
+* Raft consensus algorithm to manage nodes
+* Protocol on gRPC/Protobuf
+* Schema-less, all data in msgpack (binary JSON)
 * Automatic load-balancer
 * Failover support
 * Multi datacenter support
-* All traffic is encrypted by SSL
+* No plain traffic, always SSL
 
 ### API Design
 
-* Key is byte array NOT NULL
-* Value is byte array NOT NULL
+* Key is byte array or it's hash, NOT NULL
+* Value is byte array in msgpack, NOT NULL
 
-SLA Operations:
-* Get - gets value (and version) by key, if not found return null
-* Put - puts not null value by key (can not put null values)
-* CompareAndPut - puts not null value by key and checks version
-* Remove - removes value by key
+Basic Operations:
+* get - gets value (and metadata) by key, if not found return null (not error)
+* put - puts value by key
+* compareAndPut - puts value by key only if version match
+* remove - removes value by key
 
-SLA Multi Operations:
+Bulk Operations:
 * multiGet - gets values in a batch
+
+Stream Operations:
 * getAll - gets values as stream
 * putAll - puts values as stream
 * removeAll - removes values as stream
+* scan - query all key-value pairs with some conditions
 
-NON SQL Operations:
-* Scan - query all key-value pairs with some conditions, supports bucket selection ( buckerNumber = hash(key) % n)
+### Errors 
 
-PIT (Point In Time) support if configured:
-* Stores all values as Map<timestamp, value> map
-* Put - calls map.put(timestamp, value)
-* Remove - calls map.remove(timestamp, value)
-* Get - calls map.filter(pit <= request_pit).max(pit), if request_pit not defined, then pit = Current.timestamp();
-* Scan - the same as Get
+All errors are passthrough to client.
 
 ### Build
 
-Build and install in local system:
+Required libraries:
 * Protobuf 3.5.1
 * GRPC 1.2.0
 * Aerospike Client
@@ -50,15 +49,16 @@ Build and install in local system:
 * LuaJIT
 * Msgpack
 * LZ4, ZSDT, Snappy, BZ2, Z
+* OpenSSL
 
-Build the project:
+Build:
 ```
 make
 ```
 
-Run sync_server
+Run:
 ```
-./src/gkvs_server
+./src/gkvs_server redis.conf
 ```
 
 ### Configure
