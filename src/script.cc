@@ -30,6 +30,29 @@
     #define lua_objlen lua_rawlen
 #endif
 
+static void lua_stackDump (lua_State *L) {
+    int i=lua_gettop(L);
+    printf(" ----------------  Stack Dump ----------------\n" );
+    while(  i   ) {
+        int t = lua_type(L, i);
+        switch (t) {
+            case LUA_TSTRING:
+                printf("%d:`%s'\n", i, lua_tostring(L, i));
+                break;
+            case LUA_TBOOLEAN:
+                printf("%d: %s\n",i,lua_toboolean(L, i) ? "true" : "false");
+                break;
+            case LUA_TNUMBER:
+                printf("%d: %g\n",  i, lua_tonumber(L, i));
+                break;
+            default: printf("%d: %s\n", i, lua_typename(L, t));
+            break;
+        }
+        i--;
+    }
+    printf("--------------- Stack Dump Finished ---------------\n" );
+}
+
 // clusterName:string, driver:string, conf:table
 static int gkvs::lua_add_cluster(lua_State *L) {
 
@@ -54,14 +77,7 @@ static int gkvs::lua_add_cluster(lua_State *L) {
     gkvs::lua_ser ser;
     ser.pack_obj(L, 3);
 
-    std::cout << "[";
-    for (int i = 0; i < ser.size(); ++i) {
-        if (i != 0) {
-            std::cout << ", ";
-        }
-        std::cout << (int) ser.data()[i];
-    }
-    std::cout << "]" << std::endl;
+    //ser.print();
 
     std::string conf(ser.data(), ser.size());
 
@@ -319,6 +335,7 @@ void gkvs::lua_ser::pack_table(lua_State* L, int index) {
     // keys is detected as a table, not an array.
     bool is_array = false;
     size_t len = lua_objlen(L, index);
+
     if (len > 0) {
         lua_pushnumber(L, len);
         if (lua_next(L, index) == 0) is_array = true;
@@ -380,11 +397,13 @@ void gkvs::lua_ser::pack_obj(lua_State* L, int index) {
         msgpack_packer_init(&pk_, &sbuf_, msgpack_sbuffer_write);
     }
 
-    sbuf_pos_ = sbuf_.size;
-
     int type = lua_type(L, index);
 
     switch (type) {
+
+        case LUA_TNIL:
+            msgpack_pack_nil(&pk_);
+            break;
 
         case LUA_TBOOLEAN: {
             int b = lua_toboolean(L, index);
@@ -439,7 +458,7 @@ void gkvs::lua_ser::pack_obj(lua_State* L, int index) {
             luaL_error(L, "userdata not supported: %s", lua_typename(L, type));
             break;
 
-        case LUA_TNIL:
+        case LUA_TFUNCTION:
         case LUA_TTHREAD:
         case LUA_TLIGHTUSERDATA:
         default:
@@ -447,4 +466,15 @@ void gkvs::lua_ser::pack_obj(lua_State* L, int index) {
             break;
     }
 
+}
+
+void gkvs::lua_ser::print() {
+    std::cout << "[";
+    for (int i = 0; i < size(); ++i) {
+        if (i != 0) {
+            std::cout << ", ";
+        }
+        std::cout << (int) data()[i];
+    }
+    std::cout << "]" << std::endl;
 }

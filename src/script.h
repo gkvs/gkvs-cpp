@@ -197,6 +197,8 @@ namespace gkvs {
             return sbuf_.size - sbuf_pos_;
         }
 
+        void print();
+
     protected:
 
         void unpack_array(const msgpack_object_array& array, lua_State* L);
