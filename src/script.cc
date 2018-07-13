@@ -18,8 +18,10 @@
 
 #include "script.h"
 
-#include <iostream>
 #include <string>
+#include <iostream>
+#include <sstream>
+
 
 #include <glog/logging.h>
 
@@ -58,10 +60,7 @@ static int gkvs::lua_add_cluster(lua_State *L) {
 
     int n = lua_gettop(L);
     if (n < 3) {
-
-        LOG(ERROR) << "lua_add_cluster: wrong number of arguments" << std::endl;
-
-        lua_pushstring(L, "add_cluster: wrong number of arguments");
+        lua_pushstring(L, "add_cluster failed, wrong number of arguments");
         lua_error(L);
         return 0;
     }
@@ -84,9 +83,10 @@ static int gkvs::lua_add_cluster(lua_State *L) {
     std::string error;
     if (!gkvs::add_cluster(cluster, driver, conf, error)) {
 
-        LOG(ERROR) << "error: " << error << std::endl;
+        std::stringstream msg;
+        msg << "add_cluster(" << cluster << ", " << driver << ") failed, " << error;
 
-        lua_pushstring(L, "add_cluster: wrong number of arguments");
+        lua_pushstring(L, msg.str().c_str());
         lua_error(L);
     }
 
@@ -98,10 +98,7 @@ static int gkvs::lua_add_table(lua_State *L) {
 
     int n = lua_gettop(L);
     if (n < 3) {
-
-        LOG(ERROR) << "lua_add_table: wrong number of arguments" << std::endl;
-
-        lua_pushstring(L, "wrong number of arguments");
+        lua_pushstring(L, "add_table failed, wrong number of arguments");
         lua_error(L);
         return 0;
     }
@@ -122,9 +119,10 @@ static int gkvs::lua_add_table(lua_State *L) {
     std::string error;
     if (!gkvs::add_table(table, cluster, conf, error)) {
 
-        LOG(ERROR) << "error: " << error << std::endl;
+        std::stringstream msg;
+        msg << "add_table(" << table << ", " << cluster << ") failed, " << error;
 
-        lua_pushstring(L, "add_table: wrong number of arguments");
+        lua_pushstring(L, msg.str().c_str());
         lua_error(L);
     }
 
@@ -136,10 +134,7 @@ static int gkvs::lua_add_view(lua_State *L) {
 
     int n = lua_gettop(L);
     if (n < 3) {
-
-        LOG(ERROR) << "lua_add_view: wrong number of arguments" << std::endl;
-
-        lua_pushstring(L, "add_view: wrong number of arguments");
+        lua_pushstring(L, "add_view failed, wrong number of arguments");
         lua_error(L);
         return 0;
     }
@@ -157,10 +152,12 @@ static int gkvs::lua_add_view(lua_State *L) {
     std::string error;
     if (!gkvs::add_view(view, cluster, table, error)) {
 
-        LOG(ERROR) << "error: " << error << std::endl;
+        std::stringstream msg;
+        msg << "add_view(" << view << ", " << table << ", " << cluster << ") failed, " << error;
 
-        lua_pushstring(L, "add_view: wrong number of arguments");
+        lua_pushstring(L, msg.str().c_str());
         lua_error(L);
+
     }
 
     return 0;
@@ -177,19 +174,33 @@ gkvs::lua_script::lua_script() {
 
 }
 
-bool gkvs::lua_script::loadfile(const std::string& filename) {
-    if(luaL_loadfile(L, filename.c_str()) || lua_pcall(L, 0, 0, 0)) {
-        LOG(ERROR) << "fail to load LUA script from file: " << filename << std::endl;
+bool gkvs::lua_script::loadfile(const std::string& filename, std::string& error) {
+
+    if (luaL_loadfile(L, filename.c_str())) {
+        error = "script syntax error or file not found";
         return false;
     }
+
+    if(lua_pcall(L, 0, 0, 0)) {
+        error = lua_tostring(L, -1);
+        return false;
+    }
+
     return true;
 }
 
-bool gkvs::lua_script::loadstring(const std::string& content) {
-    if(luaL_loadstring(L, content.c_str()) || lua_pcall(L, 0, 0, 0)) {
-        LOG(ERROR) << "fail to exec LUA script: " << content << std::endl;
+bool gkvs::lua_script::loadstring(const std::string& content, std::string& error) {
+
+    if (luaL_loadstring(L, content.c_str())) {
+        error = "script syntax error";
         return false;
     }
+
+    if(lua_pcall(L, 0, 0, 0)) {
+        error = lua_tostring(L, -1);
+        return false;
+    }
+
     return true;
 }
 

@@ -61,9 +61,9 @@ namespace gkvs {
             lua_close(L);
         }
 
-        bool loadfile(const std::string& filename);
+        bool loadfile(const std::string& filename, std::string& error);
 
-        bool loadstring(const std::string& content);
+        bool loadstring(const std::string& content, std::string& error);
 
         template<typename T>
         inline T get(const std::string& variableName) const {

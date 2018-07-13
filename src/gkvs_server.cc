@@ -596,13 +596,16 @@ bool gkvs::add_view(const std::string& view, const std::string& cluster, const s
 }
 
 
-void load_script(const std::string& content) {
+bool load_script(const std::string& content) {
 
+    std::string error;
     gkvs::lua_script script;
-    if (!script.loadstring(content)) {
-        LOG(ERROR) << "failed to parse config: " << content << std::endl;
+    if (!script.loadstring(content, error)) {
+        LOG(ERROR) << "Lua script error: " << error << std::endl;
+        return false;
     }
 
+    return true;
 }
 
 std::shared_ptr<grpc::ServerCredentials> create_server_credentials() {
@@ -653,7 +656,10 @@ void RunServer(const std::string& filename) {
 
     std::string content = gkvs::get_file_content(filename);
 
-    load_script(content);
+    if (!load_script(content)) {
+        LOG(ERROR) << "failed to parse config: " << content << std::endl;
+        return;
+    }
 
     std::shared_ptr<grpc::ServerCredentials> creds = create_server_credentials();
 
