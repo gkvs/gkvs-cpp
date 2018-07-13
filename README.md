@@ -4,7 +4,7 @@ Generic Key-Value Storage
 ### Vision
 * Federated tables (external clusters: Aerospike, Redis)
 * Internal tables (engine: RocksDB)
-* Zero-config (everything configured by Lua scripts, supports remote config)
+* Zero-config
 * Server written on C/C++, client on Java
 * Raft consensus algorithm to manage nodes
 * Protocol on gRPC/Protobuf
@@ -73,6 +73,12 @@ add_table("test", "redis1", { ttl = 100 } );
 add_view("TEST", "redis1", "test");
 
 ```
+
+Server node receives configuration commands by network and execute them immediatelly.
+Raft consensus algorithm is using to distribute them in a pool.
+
+All succesfully executed commands will be appended to the command log and written to text file on disk (editable).
+On startup node will execute all of them.
 
 ### Build
 
