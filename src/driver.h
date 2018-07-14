@@ -192,7 +192,7 @@ namespace gkvs {
         }
 
         inline static void elapsed(double elapsed, ResultHeader *result) {
-            result->set_elapse(elapsed);
+            result->set_elapsed(elapsed);
         }
 
         inline static void key(const Key& key , ValueResult *result, const OutputOptions &out) {
