@@ -144,9 +144,9 @@ namespace gkvs {
         }
 
 
-        void get(const KeyOperation *request, const std::string& table_override, ValueResult *response) override {
+        void get(const KeyOperation *request, const std::string& table, ValueResult *response) override {
 
-            do_get(request, table_override, response);
+            do_get(request, table, response);
 
         }
 
@@ -156,21 +156,21 @@ namespace gkvs {
 
         }
 
-        void scan(const ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<ValueResult> *writer) override {
+        void scan(const ScanOperation *request, const std::string& table, ::grpc::ServerWriter<ValueResult> *writer) override {
 
-            do_scan(request, table_override, writer);
-
-        }
-
-        void put(const PutOperation *request, const std::string& table_override, StatusResult *response) override {
-
-            do_put(request, table_override, response);
+            do_scan(request, table, writer);
 
         }
 
-        void remove(const KeyOperation *request, const std::string& table_override, StatusResult *response) override {
+        void put(const PutOperation *request, const std::string& table, StatusResult *response) override {
 
-            do_remove(request, table_override, response);
+            do_put(request, table, response);
+
+        }
+
+        void remove(const KeyOperation *request, const std::string& table, StatusResult *response) override {
+
+            do_remove(request, table, response);
 
         }
 
@@ -189,15 +189,15 @@ namespace gkvs {
 
         void do_multi_get(const std::vector<MultiGetEntry>& entries);
 
-        void do_scan(const ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<ValueResult> *writer);
+        void do_scan(const ScanOperation *request, const std::string& table, ::grpc::ServerWriter<ValueResult> *writer);
 
-        bool do_scan(const ScanOperation *request, const std::string& table_override, char* offset, int offset_size, int limit, int* affected, ::grpc::ServerWriter<ValueResult> *writer);
+        bool do_scan(const ScanOperation *request, const std::string& table, char* offset, int offset_size, int limit, int* affected, ::grpc::ServerWriter<ValueResult> *writer);
 
-        void do_get(const KeyOperation *request, const std::string& table_override, ValueResult *response);
+        void do_get(const KeyOperation *request, const std::string& table, ValueResult *response);
 
-        void do_put(const PutOperation *request, const std::string& table_override, StatusResult *response);
+        void do_put(const PutOperation *request, const std::string& table, StatusResult *response);
 
-        void do_remove(const KeyOperation *request, const std::string& table_override, StatusResult *response);
+        void do_remove(const KeyOperation *request, const std::string& table, StatusResult *response);
 
         void error(redisReply *reply, Status *status) {
             status->set_code(StatusCode::ERROR_DRIVER);
@@ -238,7 +238,7 @@ namespace gkvs {
             return false;
         }
 
-        void key_result(const redis_reply& reply, ValueResult* result, const OutputOptions &out);
+        void key_result(const redis_reply& reply, const std::string& view, ValueResult* result, const OutputOptions &out);
 
         std::string value_result(const redis_reply& reply, Value* value, const OutputOptions &out);
 
@@ -317,22 +317,22 @@ std::string gkvs::redis_reply::pack_redis_value(const redisReply *reply) {
     return result;
 }
 
-void gkvs::RedisDriver::key_result(const redis_reply& reply, ValueResult* result, const OutputOptions &out) {
+void gkvs::RedisDriver::key_result(const redis_reply& reply, const std::string& view, ValueResult* result, const OutputOptions &out) {
 
     bool includeKey = check::include_key(out);
 
     if (includeKey) {
 
+        result->mutable_key()->set_viewname(view);
         std::string raw = reply.to_raw();
 
         size_t delim = raw.find(':', 0);
         if (delim == -1 || delim + 1 >= raw.size()) {
-            result->mutable_key()->set_raw(raw);
+            result->mutable_key()->set_recordkey(raw);
         }
         else {
-            result->mutable_key()->set_tablename(raw.substr(0, delim));
             size_t pos = delim + 1;
-            result->mutable_key()->set_raw(raw.substr(pos, raw.size() - pos));
+            result->mutable_key()->set_recordkey(raw.substr(pos, raw.size() - pos));
         }
 
     }
@@ -358,16 +358,16 @@ void gkvs::RedisDriver::do_multi_get(const std::vector<MultiGetEntry>& entries) 
     for (int i = 0; i < size; ++i) {
 
         MultiGetEntry entry = entries[i];
-        do_get(&entry.get_request(), entry.get_table_override(), entry.get_response());
+        do_get(&entry.get_request(), entry.get_table(), entry.get_response());
 
     }
 
 }
 
-void gkvs::RedisDriver::do_scan(const ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<ValueResult> *writer) {
+void gkvs::RedisDriver::do_scan(const ScanOperation *request, const std::string& table, ::grpc::ServerWriter<ValueResult> *writer) {
 
     std::shared_ptr<RedisTable> tbl;
-    if (!lookup_table(table_override, tbl)) {
+    if (!lookup_table(table, tbl)) {
         ValueResult result;
         result::header(request->header(), result.mutable_header());
         status::error_resource("table not found", result.mutable_status());
@@ -398,12 +398,12 @@ void gkvs::RedisDriver::do_scan(const ScanOperation *request, const std::string&
 
 }
 
-bool gkvs::RedisDriver::do_scan(const ScanOperation *request, const std::string& table_override, char* offset, int offset_size, int limit, int *affected, ::grpc::ServerWriter<ValueResult> *writer) {
+bool gkvs::RedisDriver::do_scan(const ScanOperation *request, const std::string& table, char* offset, int offset_size, int limit, int *affected, ::grpc::ServerWriter<ValueResult> *writer) {
 
     *affected = 0;
 
     redis_reply scanReply;
-    scanReply = (redisReply *) redisCommand(context_, "SCAN %s MATCH %s:* COUNT %i", offset, table_override.c_str(), limit);
+    scanReply = (redisReply *) redisCommand(context_, "SCAN %s MATCH %s:* COUNT %i", offset,  table.c_str(), limit);
 
     if (scanReply.empty()) {
         ValueResult result;
@@ -475,7 +475,7 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, const std::string&
                 error(element, response.mutable_status());
             } else {
                 metadata_result(nullptr, -1, &response);
-                key_result(redis_reply(element, false), &response, request->output());
+                key_result(redis_reply(element, false), request->viewname(), &response, request->output());
                 status::success(response.mutable_status());
             }
 
@@ -487,20 +487,15 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, const std::string&
     return true;
 }
 
-void gkvs::RedisDriver::do_get(const KeyOperation *request, const std::string& table_override, ValueResult *response) {
+void gkvs::RedisDriver::do_get(const KeyOperation *request, const std::string& table, ValueResult *response) {
 
     std::shared_ptr<RedisTable> tbl;
-    if (!lookup_table(table_override, tbl)) {
+    if (!lookup_table(table, tbl)) {
         status::error_resource("table not found", response->mutable_status());
         return;
     }
 
-    if (request->key().recordKey_case() != Key::RecordKeyCase::kRaw) {
-        status::bad_request("key must be raw", response->mutable_status());
-        return;
-    }
-
-    std::string key = tbl->get_table() + ":" + request->key().raw();
+    std::string key = tbl->get_table() + ":" + request->key().recordkey();
 
     redis_reply reply;
 
@@ -561,20 +556,15 @@ void gkvs::RedisDriver::do_get(const KeyOperation *request, const std::string& t
 
 }
 
-void gkvs::RedisDriver::do_put(const PutOperation *request, const std::string& table_override, StatusResult *response) {
+void gkvs::RedisDriver::do_put(const PutOperation *request, const std::string& table, StatusResult *response) {
 
     std::shared_ptr<RedisTable> tbl;
-    if (!lookup_table(table_override, tbl)) {
+    if (!lookup_table(table, tbl)) {
         status::error_resource("table not found", response->mutable_status());
         return;
     }
 
-    if (request->key().recordKey_case() != Key::RecordKeyCase::kRaw) {
-        status::bad_request("key must be raw", response->mutable_status());
-        return;
-    }
-
-    std::string key = tbl->get_table() + ":" + request->key().raw();
+    std::string key = tbl->get_table() + ":" + request->key().recordkey();
     const std::string& value = request->value().raw();
 
     bool updated = true;
@@ -685,20 +675,15 @@ void gkvs::RedisDriver::do_put(const PutOperation *request, const std::string& t
 
 }
 
-void gkvs::RedisDriver::do_remove(const KeyOperation *request, const std::string& table_override, StatusResult *response) {
+void gkvs::RedisDriver::do_remove(const KeyOperation *request, const std::string& table, StatusResult *response) {
 
     std::shared_ptr<RedisTable> tbl;
-    if (!lookup_table(table_override, tbl)) {
+    if (!lookup_table(table, tbl)) {
         status::error_resource("table not found", response->mutable_status());
         return;
     }
 
-    if (request->key().recordKey_case() != Key::RecordKeyCase::kRaw) {
-        status::bad_request("key must be raw", response->mutable_status());
-        return;
-    }
-
-    std::string key = tbl->get_table() + ":" + request->key().raw();
+    std::string key = tbl->get_table() + ":" + request->key().recordkey();
 
     redis_reply reply;
     reply = (redisReply *) redisCommand(context_, "DEL %b", key.c_str(), key.size());

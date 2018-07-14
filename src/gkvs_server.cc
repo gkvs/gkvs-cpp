@@ -221,11 +221,11 @@ namespace gkvs {
                 return grpc::Status::OK;
             }
 
-            const std::string& view = request->key().tablename();
+            const std::string& view = request->key().viewname();
 
             auto i = views_.find(view);
             if (i == views_.end()) {
-                status::error_resource("table not found", response->mutable_status());
+                status::error_resource("view not found", response->mutable_status());
                 return grpc::Status::OK;
             }
 
@@ -267,11 +267,11 @@ namespace gkvs {
                     continue;
                 }
 
-                const std::string& view = op.key().tablename();
+                const std::string& view = op.key().viewname();
 
                 auto v = views_.find(view);
                 if (v == views_.end()) {
-                    status::error_resource("table not found", result->mutable_status());
+                    status::error_resource("view not found", result->mutable_status());
                     continue;
                 }
 
@@ -334,12 +334,12 @@ namespace gkvs {
         grpc::Status scan(::grpc::ServerContext *context, const ::gkvs::ScanOperation *request,
                     ::grpc::ServerWriter<::gkvs::ValueResult> *writer) override {
 
-            const std::string& view = request->tablename();
+            const std::string& view = request->viewname();
 
             if (view.empty()) {
                 ValueResult result;
                 result::header(request->header(), result.mutable_header());
-                status::bad_request("empty table name", result.mutable_status());
+                status::bad_request("empty view name", result.mutable_status());
                 writer->WriteLast(result, grpc::WriteOptions());
                 return grpc::Status::OK;
             }
@@ -349,7 +349,7 @@ namespace gkvs {
             if (i == views_.end()) {
                 ValueResult result;
                 result::header(request->header(), result.mutable_header());
-                status::error_resource("table not found", result.mutable_status());
+                status::error_resource("view not found", result.mutable_status());
                 writer->WriteLast(result, grpc::WriteOptions());
                 return grpc::Status::OK;
             }
@@ -396,12 +396,12 @@ namespace gkvs {
                 return grpc::Status::OK;
             }
 
-            const std::string& view = request->key().tablename();
+            const std::string& view = request->key().viewname();
 
             auto i = views_.find(view);
 
             if (i == views_.end()) {
-                status::error_resource("table not found", response->mutable_status());
+                status::error_resource("view not found", response->mutable_status());
                 return grpc::Status::OK;
             }
 
@@ -469,12 +469,12 @@ namespace gkvs {
                 return grpc::Status::OK;
             }
 
-            const std::string& view = request->key().tablename();
+            const std::string& view = request->key().viewname();
 
             auto i = views_.find(view);
 
             if (i == views_.end()) {
-               status::error_resource("table not found", response->mutable_status());
+               status::error_resource("view not found", response->mutable_status());
                 return grpc::Status::OK;
             }
 

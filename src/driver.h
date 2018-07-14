@@ -33,66 +33,56 @@ namespace gkvs {
 
     public:
 
+        StatusErr() :
+                statusCode_(StatusCode::ERROR_INTERNAL),
+                errorCode_(-1),
+                errorMessage_("")
+                {}
+
         bool valid_key(const Key &key) {
 
-            if (key.tablename().empty()) {
-                bad_request("empty table name");
+            if (key.viewname().empty()) {
+                bad_request("empty view name");
                 return false;
             }
 
-            switch(key.recordKey_case()) {
-
-                case Key::RecordKeyCase::kRaw:
-                    if (key.raw().empty()) {
-                        bad_request("empty record key raw");
-                        return false;
-                    }
-                    break;
-
-                case Key::RecordKeyCase::kDigest:
-                    if (key.digest().empty()) {
-                        bad_request("empty record key digest");
-                        return false;
-                    }
-                    break;
-
-                default:
-                    bad_request("invalid record key type");
-                    return false;
+            if (key.recordkey().empty()) {
+                bad_request("empty record key");
+                return false;
             }
 
             return true;
         }
 
         void bad_request(const char* errorMessage) {
-            _statusCode = StatusCode::ERROR_BAD_REQUEST;
-            _errorCode = -1;
-            _errorMessage = errorMessage;
+            statusCode_ = StatusCode::ERROR_BAD_REQUEST;
+            errorCode_ = -1;
+            errorMessage_ = errorMessage;
         }
 
         void resource(const char* errorMessage) {
-            _statusCode = StatusCode::ERROR_RESOURCE;
-            _errorCode = -1;
-            _errorMessage = errorMessage;
+            statusCode_ = StatusCode::ERROR_RESOURCE;
+            errorCode_ = -1;
+            errorMessage_ = errorMessage;
         }
 
         void driver_error(const char* errorMessage) {
-            _statusCode = StatusCode::ERROR_DRIVER;
-            _errorCode = -1;
-            _errorMessage = errorMessage;
+            statusCode_ = StatusCode::ERROR_DRIVER;
+            errorCode_ = -1;
+            errorMessage_ = errorMessage;
         }
 
         void to_status(Status* status) {
-            status->set_code(_statusCode);
-            status->set_errorcode(_errorCode);
-            status->set_errormessage(_errorMessage);
+            status->set_code(statusCode_);
+            status->set_errorcode(errorCode_);
+            status->set_errormessage(errorMessage_);
         }
 
     private:
 
-        StatusCode _statusCode = StatusCode::ERROR_INTERNAL;
-        int _errorCode = -1;
-        const char* _errorMessage = "";
+        StatusCode statusCode_;
+        int errorCode_;
+        const char* errorMessage_;
 
     };
 
@@ -209,18 +199,18 @@ namespace gkvs {
 
     public:
 
-        MultiGetEntry(const KeyOperation& request, const std::string& table_override, ValueResult* response)
-                : request_(request), table_override_(table_override), response_(response) {}
+        MultiGetEntry(const KeyOperation& request, const std::string& table, ValueResult* response)
+                : request_(request), table_(table), response_(response) {}
 
         MultiGetEntry(const MultiGetEntry& other)
-                : request_(other.request_), table_override_(other.table_override_), response_(other.response_) {}
+                : request_(other.request_), table_(other.table_), response_(other.response_) {}
 
         const KeyOperation& get_request() const {
             return request_;
         }
 
-        const std::string& get_table_override() const {
-            return table_override_;
+        const std::string& get_table() const {
+            return table_;
         }
 
         ValueResult* get_response() const {
@@ -230,7 +220,7 @@ namespace gkvs {
     private:
 
         const KeyOperation& request_;
-        const std::string& table_override_;
+        const std::string& table_;
         ValueResult* response_;
     };
 
@@ -245,11 +235,11 @@ namespace gkvs {
         virtual bool configure(const json &conf, std::string& error) = 0;
         virtual bool connect(std::string& error) = 0;
 
-        virtual void get(const KeyOperation* request, const std::string& table_override, ValueResult* response) = 0;
+        virtual void get(const KeyOperation* request, const std::string& table, ValueResult* response) = 0;
         virtual void multiGet(const std::vector<MultiGetEntry>& entries) = 0;
-        virtual void scan(const ScanOperation* request, const std::string& table_override, ::grpc::ServerWriter< ValueResult>* writer) = 0;
-        virtual void put(const PutOperation* request, const std::string& table_override, StatusResult* response) = 0;
-        virtual void remove(const KeyOperation* request, const std::string& table_override, StatusResult* response) = 0;
+        virtual void scan(const ScanOperation* request, const std::string& table, ::grpc::ServerWriter< ValueResult>* writer) = 0;
+        virtual void put(const PutOperation* request, const std::string& table, StatusResult* response) = 0;
+        virtual void remove(const KeyOperation* request, const std::string& table, StatusResult* response) = 0;
 
         virtual bool add_table(const std::string& table, const json& conf, std::string& error) = 0;
 

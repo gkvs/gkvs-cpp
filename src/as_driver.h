@@ -24,8 +24,39 @@
 #include <msgpack.h>
 #include <iostream>
 
+#define AS_HASH_PREFIX  "hash!"
+#define AS_HASH_PREFIX_LEN  5
 
 namespace gkvs {
+
+    namespace as_digest_support {
+
+        inline bool is_digest(const std::string &recordKey) {
+
+            int len = recordKey.size();
+            int expected = AS_HASH_PREFIX_LEN + AS_DIGEST_VALUE_SIZE;
+
+            return (len == expected)
+                   &&
+                   !strncmp(recordKey.c_str(), AS_HASH_PREFIX, AS_HASH_PREFIX_LEN);
+
+        }
+
+        inline bool get_digest(const std::string &recordKey, std::string& digest) {
+
+            if (is_digest(recordKey)) {
+                digest = recordKey.substr(AS_HASH_PREFIX_LEN, AS_DIGEST_VALUE_SIZE);
+                return true;
+            }
+
+            return false;
+        }
+
+        inline std::string format_key(as_digest *digest) {
+            return std::string(AS_HASH_PREFIX) + std::string((char*)digest->value, AS_DIGEST_VALUE_SIZE);
+        }
+
+    }
 
     struct as_key_hash {
 

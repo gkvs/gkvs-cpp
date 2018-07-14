@@ -291,9 +291,9 @@ namespace gkvs {
             return true;
         }
 
-        void get(const KeyOperation *request, const std::string& table_override, ValueResult *response) override {
+        void get(const KeyOperation *request, const std::string& table, ValueResult *response) override {
 
-            do_get(request, table_override, response);
+            do_get(request, table, response);
 
         }
 
@@ -303,21 +303,21 @@ namespace gkvs {
 
         }
 
-        void scan(const ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<ValueResult> *writer) override {
+        void scan(const ScanOperation *request, const std::string& table, ::grpc::ServerWriter<ValueResult> *writer) override {
 
-            do_scan(request, table_override, writer);
-
-        }
-
-        void put(const PutOperation *request, const std::string& table_override, StatusResult *response) override {
-
-            do_put(request, table_override, response);
+            do_scan(request, table, writer);
 
         }
 
-        void remove(const KeyOperation *request, const std::string& table_override, StatusResult *response) override {
+        void put(const PutOperation *request, const std::string& table, StatusResult *response) override {
 
-            do_remove(request, table_override, response);
+            do_put(request, table, response);
+
+        }
+
+        void remove(const KeyOperation *request, const std::string& table, StatusResult *response) override {
+
+            do_remove(request, table, response);
 
         }
 
@@ -459,35 +459,22 @@ namespace gkvs {
 
             set = i->second;
 
-            switch(requestKey.recordKey_case()) {
-
-                case Key::RecordKeyCase::kRaw: {
-                    const uint8_t* value = (const uint8_t*) requestKey.raw().c_str();
-                    uint32_t len = static_cast<uint32_t>(requestKey.raw().length());
-                    if (!as_key_init_rawp(&key, set->get_namespace().c_str(), set->get_set().c_str(), value, len, false)) {
-                        statusErr.driver_error("as_key_init_raw fail");
-                        return false;
-                    }
-                    break;
-                }
-
-                case Key::RecordKeyCase::kDigest: {
-                    if (requestKey.digest().length() < AS_DIGEST_VALUE_SIZE) {
-                        statusErr.bad_request("record digest must not be less than 20 bytes");
-                        return false;
-                    }
-                    const uint8_t *value = (const uint8_t *) requestKey.digest().c_str();
-                    if (!as_key_init_digest(&key, set->get_namespace().c_str(), set->get_set().c_str(), value)) {
-                        statusErr.driver_error("as_key_init_digest fail");
-                        return false;
-                    }
-                    break;
-                }
-
-                default:
-                    statusErr.bad_request("no recordRef");
+            std::string digest;
+            if (as_digest_support::get_digest(requestKey.recordkey(), digest)) {
+                const uint8_t *value = (const uint8_t *) digest.c_str();
+                if (!as_key_init_digest(&key, set->get_namespace().c_str(), set->get_set().c_str(), value)) {
+                    statusErr.driver_error("as_key_init_digest fail");
                     return false;
-
+                }
+            }
+            else {
+                const std::string& record_key = requestKey.recordkey();
+                const uint8_t* value = (const uint8_t*) record_key.c_str();
+                uint32_t len = static_cast<uint32_t>(record_key.length());
+                if (!as_key_init_rawp(&key, set->get_namespace().c_str(), set->get_set().c_str(), value, len, false)) {
+                    statusErr.driver_error("as_key_init_raw fail");
+                    return false;
+                }
             }
 
             return true;
@@ -537,14 +524,14 @@ namespace gkvs {
         }
 
 
-        void key_result(as_key* key, ValueResult *result, const OutputOptions &out) {
+        void key_result(as_key* key, const std::string& view, ValueResult *result, const OutputOptions &out) {
 
             if (!check::include_key(out)) {
                 return;
             }
 
             Key* res = result->mutable_key();
-            res->set_tablename(key->set);
+            res->set_viewname(view);
 
             bool setup = false;
 
@@ -554,7 +541,7 @@ namespace gkvs {
                 binarer.set(key->valuep);
 
                 if (binarer.has()) {
-                    res->set_raw(binarer.data(), binarer.size());
+                    res->set_recordkey(binarer.data(), binarer.size());
                     setup = true;
                 }
 
@@ -564,7 +551,7 @@ namespace gkvs {
 
                 as_digest *digest = as_key_digest(key);
                 if (digest) {
-                    res->set_digest(key->digest.value, AS_DIGEST_VALUE_SIZE);
+                    res->set_recordkey(as_digest_support::format_key(digest));
                 }
 
             }
@@ -618,7 +605,7 @@ namespace gkvs {
 
         };
 
-        void do_scan(const ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<ValueResult> *writer);
+        void do_scan(const ScanOperation *request, const std::string& table, ::grpc::ServerWriter<ValueResult> *writer);
 
         bool static static_scan_callback(const as_val* val, void* udata);
 
@@ -629,11 +616,11 @@ namespace gkvs {
          */
 
 
-        void do_get(const KeyOperation *request, const std::string& table_override, ValueResult *response);
+        void do_get(const KeyOperation *request, const std::string& table, ValueResult *response);
 
-        void do_put(const PutOperation *request, const std::string& table_override, StatusResult *response);
+        void do_put(const PutOperation *request, const std::string& table, StatusResult *response);
 
-        void do_remove(const KeyOperation *request, const std::string& table_override, StatusResult *response);
+        void do_remove(const KeyOperation *request, const std::string& table, StatusResult *response);
 
 
     };
@@ -839,7 +826,7 @@ void gkvs::AerospikeDriver::do_multi_get(const std::vector<MultiGetEntry>& entri
 
         StatusErr statusErr;
         as_key *key = as_batch_keyat(&batch, actual_size);
-        if (!init_key(operation.key(), entry.get_table_override(), *key, context.sets[i], statusErr)) {
+        if (!init_key(operation.key(), entry.get_table(), *key, context.sets[i], statusErr)) {
             statusErr.to_status(entry.get_response()->mutable_status());
             continue;
         }
@@ -954,9 +941,9 @@ bool gkvs::AerospikeDriver::multiGet_callback(const as_batch_read* results, uint
 }
 
 
-void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<::gkvs::ValueResult> *writer) {
+void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, const std::string& table, ::grpc::ServerWriter<::gkvs::ValueResult> *writer) {
 
-    auto i = sets_.find(table_override);
+    auto i = sets_.find(table);
     if (i == sets_.end()) {
         ValueResult result;
         result::header(request->header(), result.mutable_header());
@@ -1026,7 +1013,7 @@ bool gkvs::AerospikeDriver::scan_callback(const as_val* val, scan_context* conte
         result::header(operation->header(), result.mutable_header());
         status::success(result.mutable_status());
         metadata_result(rec, &result);
-        key_result(&rec->key, &result, operation->output());
+        key_result(&rec->key, operation->viewname(), &result, operation->output());
         value_result(rec, &result, operation->output(), context->single_bin);
 
 
@@ -1038,12 +1025,12 @@ bool gkvs::AerospikeDriver::scan_callback(const as_val* val, scan_context* conte
 }
 
 
-void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, const std::string& table_override, ::gkvs::ValueResult *response) {
+void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, const std::string& table, ::gkvs::ValueResult *response) {
 
     std::shared_ptr<AerospikeSet> set;
     StatusErr statusErr;
     as_key key;
-    if (!init_key(request->key(), table_override, key, set, statusErr)) {
+    if (!init_key(request->key(), table, key, set, statusErr)) {
         statusErr.to_status(response->mutable_status());
         return;
     }
@@ -1101,13 +1088,13 @@ void gkvs::AerospikeDriver::do_get(const ::gkvs::KeyOperation *request, const st
 
 }
 
-void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, const std::string& table_override, ::gkvs::StatusResult *response) {
+void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, const std::string& table, ::gkvs::StatusResult *response) {
 
     std::shared_ptr<AerospikeSet> set;
     StatusErr statusErr;
     as_key key;
 
-    if (!init_key(request->key(), table_override, key, set, statusErr)) {
+    if (!init_key(request->key(), table, key, set, statusErr)) {
         statusErr.to_status(response->mutable_status());
         return;
     }
@@ -1136,7 +1123,7 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, const st
     }
 
     // save the key if sent
-    if (request->key().recordKey_case() == Key::RecordKeyCase::kRaw) {
+    if (!as_digest_support::is_digest(request->key().recordkey())) {
         pol.key = AS_POLICY_KEY_SEND;
     }
 
@@ -1184,12 +1171,12 @@ void gkvs::AerospikeDriver::do_put(const ::gkvs::PutOperation *request, const st
     //as_record_destroy(rec);
 }
 
-void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, const std::string& table_override, ::gkvs::StatusResult *response) {
+void gkvs::AerospikeDriver::do_remove(const ::gkvs::KeyOperation *request, const std::string& table, ::gkvs::StatusResult *response) {
 
     std::shared_ptr<AerospikeSet> set;
     StatusErr statusErr;
     as_key key;
-    if (!init_key(request->key(), table_override, key, set, statusErr)) {
+    if (!init_key(request->key(), table, key, set, statusErr)) {
         statusErr.to_status(response->mutable_status());
         return;
     }
