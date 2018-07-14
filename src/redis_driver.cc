@@ -32,6 +32,41 @@ using json = nlohmann::json;
 
 namespace gkvs {
 
+    class RedisTable final {
+
+    public:
+
+        explicit RedisTable(const std::string& table) :
+                table_(table),
+                ttl_(0)
+        {}
+
+        bool configure(const json& conf, std::string& error) {
+
+            auto i = conf.find("ttl");
+
+            if (i != conf.end()) {
+                ttl_ = i->get<int>();
+            }
+
+            return true;
+
+        }
+
+        const std::string& get_table() const {
+            return table_;
+        }
+
+        int get_ttl() const {
+            return ttl_;
+        }
+
+    private:
+
+        std::string table_;
+        int ttl_;
+
+    };
 
     class RedisDriver final : public Driver {
 
@@ -89,6 +124,22 @@ namespace gkvs {
         }
 
         bool add_table(const std::string& table, const json& conf, std::string& error) override {
+
+            auto i = map_.find(table);
+
+            if (i != map_.end()) {
+                error = "table '" + table +"' already exists in " + get_name();
+                return false;
+            }
+
+            std::shared_ptr<RedisTable> tbl(new RedisTable(table));
+
+            if (!tbl->configure(conf, error)) {
+                return false;
+            }
+
+            map_[table] = tbl;
+
             return true;
         }
 
@@ -130,6 +181,8 @@ namespace gkvs {
 
         std::string hostname_;
         int port_;
+
+        std::unordered_map<std::string, std::shared_ptr<RedisTable>> map_;
 
 
     protected:
@@ -188,6 +241,19 @@ namespace gkvs {
         void key_result(const redis_reply& reply, ValueResult* result, const OutputOptions &out);
 
         std::string value_result(const redis_reply& reply, Value* value, const OutputOptions &out);
+
+        bool lookup_table(const std::string& table, std::shared_ptr<RedisTable>& tbl) {
+
+            auto i = map_.find(table);
+
+            if (i == map_.end()) {
+                return false;
+            }
+
+            tbl = i->second;
+
+            return true;
+        }
 
     };
 
@@ -300,6 +366,15 @@ void gkvs::RedisDriver::do_multi_get(const std::vector<MultiGetEntry>& entries) 
 
 void gkvs::RedisDriver::do_scan(const ScanOperation *request, const std::string& table_override, ::grpc::ServerWriter<ValueResult> *writer) {
 
+    std::shared_ptr<RedisTable> tbl;
+    if (!lookup_table(table_override, tbl)) {
+        ValueResult result;
+        result::header(request->header(), result.mutable_header());
+        status::error_resource("table not found", result.mutable_status());
+        writer->WriteLast(result, grpc::WriteOptions());
+        return;
+    }
+
     int limit = 1000;
     char offset[255];
     strcpy(offset, "0");
@@ -307,7 +382,7 @@ void gkvs::RedisDriver::do_scan(const ScanOperation *request, const std::string&
 
         int affected = 0;
 
-        if (!do_scan(request, table_override, offset, sizeof(offset), limit, &affected, writer)) {
+        if (!do_scan(request, tbl->get_table(), offset, sizeof(offset), limit, &affected, writer)) {
             break;
         }
 
@@ -414,10 +489,9 @@ bool gkvs::RedisDriver::do_scan(const ScanOperation *request, const std::string&
 
 void gkvs::RedisDriver::do_get(const KeyOperation *request, const std::string& table_override, ValueResult *response) {
 
-    const std::string& tableName = table_override;
-
-    if (tableName.empty()) {
-        status::bad_request("empty table name", response->mutable_status());
+    std::shared_ptr<RedisTable> tbl;
+    if (!lookup_table(table_override, tbl)) {
+        status::error_resource("table not found", response->mutable_status());
         return;
     }
 
@@ -426,7 +500,7 @@ void gkvs::RedisDriver::do_get(const KeyOperation *request, const std::string& t
         return;
     }
 
-    std::string key = tableName + ":" + request->key().raw();
+    std::string key = tbl->get_table() + ":" + request->key().raw();
 
     redis_reply reply;
 
@@ -489,25 +563,28 @@ void gkvs::RedisDriver::do_get(const KeyOperation *request, const std::string& t
 
 void gkvs::RedisDriver::do_put(const PutOperation *request, const std::string& table_override, StatusResult *response) {
 
+    std::shared_ptr<RedisTable> tbl;
+    if (!lookup_table(table_override, tbl)) {
+        status::error_resource("table not found", response->mutable_status());
+        return;
+    }
+
     if (request->key().recordKey_case() != Key::RecordKeyCase::kRaw) {
         status::bad_request("key must be raw", response->mutable_status());
         return;
     }
 
-    const std::string& tableName = table_override;
-
-    if (tableName.empty()) {
-        status::bad_request("empty table name", response->mutable_status());
-        return;
-    }
-
-    std::string key = tableName + ":" + request->key().raw();
+    std::string key = tbl->get_table() + ":" + request->key().raw();
     const std::string& value = request->value().raw();
 
     bool updated = true;
     redis_reply reply;
 
     int ttl = request->ttl();
+    if (ttl == 0) {
+        ttl = tbl->get_ttl();
+    }
+
     if (request->compareandput()) {
 
         if (request->version_size() == 0) {
@@ -610,19 +687,18 @@ void gkvs::RedisDriver::do_put(const PutOperation *request, const std::string& t
 
 void gkvs::RedisDriver::do_remove(const KeyOperation *request, const std::string& table_override, StatusResult *response) {
 
+    std::shared_ptr<RedisTable> tbl;
+    if (!lookup_table(table_override, tbl)) {
+        status::error_resource("table not found", response->mutable_status());
+        return;
+    }
+
     if (request->key().recordKey_case() != Key::RecordKeyCase::kRaw) {
         status::bad_request("key must be raw", response->mutable_status());
         return;
     }
 
-    const std::string& tableName = table_override;
-
-    if (tableName.empty()) {
-        status::bad_request("empty table name", response->mutable_status());
-        return;
-    }
-
-    std::string key = tableName + ":" + request->key().raw();
+    std::string key = tbl->get_table() + ":" + request->key().raw();
 
     redis_reply reply;
     reply = (redisReply *) redisCommand(context_, "DEL %b", key.c_str(), key.size());

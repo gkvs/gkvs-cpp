@@ -27,13 +27,50 @@ using json = nlohmann::json;
 
 namespace gkvs {
 
+    class RocksTable final {
+
+    public:
+
+        explicit RocksTable(const std::string& table) :
+                table_(table),
+                ttl_(0)
+        {}
+
+        bool configure(const json& conf, std::string& error) {
+
+            auto i = conf.find("ttl");
+
+            if (i != conf.end()) {
+                ttl_ = i->get<int>();
+            }
+
+            return true;
+
+        }
+
+        const std::string& get_table() const {
+            return table_;
+        }
+
+        int get_ttl() const {
+            return ttl_;
+        }
+
+    private:
+
+        std::string table_;
+        int ttl_;
+
+    };
 
     class RocksDriver final : public Driver {
 
     public:
 
-        explicit RocksDriver(const std::string& name, const std::string& db_dir) : Driver(name), db_dir_(db_dir) {
-        }
+        explicit RocksDriver(const std::string& name, const std::string& db_dir)
+                : Driver(name),
+                  db_dir_(db_dir)
+        {}
 
         bool configure(const json &conf, std::string& error) override {
 
@@ -100,6 +137,22 @@ namespace gkvs {
         }
 
         bool add_table(const std::string& table, const json& conf, std::string& error) override {
+
+            auto i = map_.find(table);
+
+            if (i != map_.end()) {
+                error = "table '" + table +"' already exists in " + get_name();
+                return false;
+            }
+
+            std::shared_ptr<RocksTable> tbl(new RocksTable(table));
+
+            if (!tbl->configure(conf, error)) {
+                return false;
+            }
+
+            map_[table] = tbl;
+
             return true;
         }
 
@@ -139,6 +192,8 @@ namespace gkvs {
         std::string db_dir_;
         DB* db_;
         Options options_;
+
+        std::unordered_map<std::string, std::shared_ptr<RocksTable>> map_;
 
     protected:
 
