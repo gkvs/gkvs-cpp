@@ -256,13 +256,13 @@ namespace gkvs {
     };
 
     // conf_str is the json config
-    Driver* create_aerospike_driver(const std::string& name, const std::string& lua_path);
+    std::shared_ptr<Driver> create_aerospike_driver(const std::string& name, const std::string& lua_path);
 
     bool as_run_tests();
 
-    Driver* create_redis_driver(const std::string& name);
+    std::shared_ptr<Driver> create_redis_driver(const std::string& name);
 
-    Driver* create_rocks_driver(const std::string& name, const std::string& work_dir);
+    std::shared_ptr<Driver> create_rocks_driver(const std::string& name, const std::string& work_dir);
 
 }
 

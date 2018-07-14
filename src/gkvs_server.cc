@@ -53,11 +53,11 @@ using json = nlohmann::json;
 
 namespace gkvs {
 
-    class Redirect {
+    class View {
 
     public:
 
-        Redirect(const std::string& view, const std::string& cluster, Driver* driver, const std::string& table)
+        View(const std::string& view, const std::string& cluster, std::shared_ptr<Driver> driver, const std::string& table)
                 : view_(view), cluster_(cluster), driver_(driver), table_(table) {
         }
 
@@ -69,7 +69,7 @@ namespace gkvs {
             return cluster_;
         }
 
-        Driver* get_driver() const {
+        std::shared_ptr<Driver>& get_driver()  {
             return driver_;
         }
 
@@ -81,7 +81,7 @@ namespace gkvs {
 
         std::string view_;
         std::string cluster_;
-        Driver* driver_;
+        std::shared_ptr<Driver> driver_;
         std::string table_;
 
     };
@@ -95,19 +95,9 @@ namespace gkvs {
         }
 
         ~GenericStoreImpl() {
-
-            for (auto i = drivers_.begin(); i != drivers_.end(); ++i) {
-                Driver* driver = i->second;
-                delete driver;
-            }
-
-            for (auto i = views_.begin(); i != views_.end(); ++i) {
-                Redirect* redirect = i->second;
-                delete redirect;
-            }
         }
 
-        bool add_driver(const std::string& cluster, Driver* driver, std::string& error) {
+        bool add_driver(const std::string& cluster, std::shared_ptr<Driver>& driver, std::string& error) {
 
             if (cluster.empty()) {
                 error = "empty cluster name";
@@ -178,9 +168,9 @@ namespace gkvs {
                 return false;
             }
 
-            Driver* driver = c->second;
+            std::shared_ptr<Driver>& driver = c->second;
 
-            views_[view] = new Redirect(view, cluster, driver, table);
+            views_[view] = std::shared_ptr<View>(new View(view, cluster, driver, table));
 
             return true;
 
@@ -229,9 +219,9 @@ namespace gkvs {
                 return grpc::Status::OK;
             }
 
-            Redirect* redirect = i->second;
+            std::shared_ptr<View>& redirect = i->second;
 
-            Driver* driver = redirect->get_driver();
+            std::shared_ptr<Driver>& driver = redirect->get_driver();
             const std::string& table = redirect->get_table();
 
             driver->get(request, table, response);
@@ -275,9 +265,9 @@ namespace gkvs {
                     continue;
                 }
 
-                Redirect* redirect = v->second;
+                std::shared_ptr<View>& redirect = v->second;
 
-                Driver* driver = redirect->get_driver();
+                Driver* driver = redirect->get_driver().get();
                 const std::string& table = redirect->get_table();
 
                 if (map.find(driver) == map.end()) {
@@ -354,8 +344,8 @@ namespace gkvs {
                 return grpc::Status::OK;
             }
 
-            Redirect* redirect = i->second;
-            Driver* driver = redirect->get_driver();
+            std::shared_ptr<View>& redirect = i->second;
+            std::shared_ptr<Driver>& driver = redirect->get_driver();
             const std::string& table = redirect->get_table();
 
             driver->scan(request, table, writer);
@@ -405,9 +395,9 @@ namespace gkvs {
                 return grpc::Status::OK;
             }
 
-            Redirect* redirect = i->second;
+            std::shared_ptr<View>& redirect = i->second;
 
-            Driver* driver = redirect->get_driver();
+            std::shared_ptr<Driver>& driver = redirect->get_driver();
             const std::string& table = redirect->get_table();
 
             driver->put(request, table, response);
@@ -478,9 +468,9 @@ namespace gkvs {
                 return grpc::Status::OK;
             }
 
-            Redirect* redirect = i->second;
+            std::shared_ptr<View>& redirect = i->second;
 
-            Driver* driver = redirect->get_driver();
+            std::shared_ptr<Driver>& driver = redirect->get_driver();
             const std::string& table = redirect->get_table();
 
             driver->remove(request, table, response);
@@ -511,8 +501,8 @@ namespace gkvs {
 
     private:
 
-        std::unordered_map<std::string, Driver*> drivers_;
-        std::unordered_map<std::string, Redirect*> views_;
+        std::unordered_map<std::string, std::shared_ptr<Driver>> drivers_;
+        std::unordered_map<std::string, std::shared_ptr<View>> views_;
 
 
     protected:
@@ -540,7 +530,7 @@ void onTerminate(int sign)
 
 bool gkvs::add_cluster(const std::string& cluster, const std::string& driver, const std::string& msgpack, std::string& error) {
 
-    gkvs::Driver* dr;
+    std::shared_ptr<Driver> dr;
 
     int size = msgpack.size();
     std::vector<uint8_t> input;

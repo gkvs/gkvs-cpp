@@ -258,8 +258,8 @@ namespace gkvs {
     };
 
 
-    Driver* create_redis_driver(const std::string &name) {
-        return new RedisDriver(name);
+    std::shared_ptr<Driver> create_redis_driver(const std::string &name) {
+        return std::shared_ptr<Driver>(new RedisDriver(name));
     }
 
 

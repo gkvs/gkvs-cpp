@@ -625,8 +625,8 @@ namespace gkvs {
 
     };
 
-    Driver* create_aerospike_driver(const std::string &name, const std::string &lua_dir) {
-        return new AerospikeDriver(name, lua_dir);
+    std::shared_ptr<Driver> create_aerospike_driver(const std::string &name, const std::string &lua_dir) {
+        return std::shared_ptr<Driver>(new AerospikeDriver(name, lua_dir));
     }
 
 

@@ -261,8 +261,8 @@ namespace gkvs {
     };
 
 
-    Driver* create_rocks_driver(const std::string &name, const std::string &db_dir) {
-        return new RocksDriver(name, db_dir);
+    std::shared_ptr<Driver> create_rocks_driver(const std::string &name, const std::string &db_dir) {
+        return std::shared_ptr<Driver>(new RocksDriver(name, db_dir));
     }
 
 
