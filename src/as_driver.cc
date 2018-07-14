@@ -59,12 +59,12 @@ namespace gkvs {
 
     static bool to_record_callback (const as_val * key, const as_val * value, void * udata);
 
-    class AerospikeSet final {
+    class AerospikeSet final : public Table {
 
     public:
 
         explicit AerospikeSet(const std::string& set) :
-                set_(set),
+                Table(set),
                 namespace_("test"),
                 single_bin_(false),
                 ttl_(0),
@@ -104,10 +104,6 @@ namespace gkvs {
 
         }
 
-        const std::string& get_set() const {
-            return set_;
-        }
-
         const std::string& get_namespace() const {
             return namespace_;
         }
@@ -126,7 +122,6 @@ namespace gkvs {
 
     private:
 
-        std::string set_;
         std::string namespace_;
         bool single_bin_;
         int ttl_;
@@ -289,6 +284,27 @@ namespace gkvs {
             sets_[table] = set;
 
             return true;
+        }
+
+        void list_tables(std::vector<std::string>& list) override {
+
+            for (auto &i : sets_) {
+                list.push_back(i.first);
+            }
+
+        }
+
+        std::shared_ptr<Table> find_table(const std::string& table) override {
+
+            auto i = sets_.find(table);
+
+            if (i != sets_.end()) {
+
+                return std::dynamic_pointer_cast<Table, AerospikeSet>(i->second);
+            }
+
+            return std::shared_ptr<Table>();
+
         }
 
         void get(const KeyOperation *request, const std::string& table, ValueResult *response) override {
@@ -462,7 +478,7 @@ namespace gkvs {
             std::string digest;
             if (as_digest_support::get_digest(requestKey.recordkey(), digest)) {
                 const uint8_t *value = (const uint8_t *) digest.c_str();
-                if (!as_key_init_digest(&key, set->get_namespace().c_str(), set->get_set().c_str(), value)) {
+                if (!as_key_init_digest(&key, set->get_namespace().c_str(), set->get_name().c_str(), value)) {
                     statusErr.driver_error("as_key_init_digest fail");
                     return false;
                 }
@@ -471,7 +487,7 @@ namespace gkvs {
                 const std::string& record_key = requestKey.recordkey();
                 const uint8_t* value = (const uint8_t*) record_key.c_str();
                 uint32_t len = static_cast<uint32_t>(record_key.length());
-                if (!as_key_init_rawp(&key, set->get_namespace().c_str(), set->get_set().c_str(), value, len, false)) {
+                if (!as_key_init_rawp(&key, set->get_namespace().c_str(), set->get_name().c_str(), value, len, false)) {
                     statusErr.driver_error("as_key_init_raw fail");
                     return false;
                 }
@@ -957,7 +973,7 @@ void gkvs::AerospikeDriver::do_scan(const ::gkvs::ScanOperation *request, const 
     scan_context context { this, writer, request, set->is_single_bin() };
 
     as_scan scan;
-    as_scan_init(&scan, set->get_namespace().c_str(), set->get_set().c_str());
+    as_scan_init(&scan, set->get_namespace().c_str(), set->get_name().c_str());
     scan.deserialize_list_map = true;
 
     if (!check::include_value(request->output())) {

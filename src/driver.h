@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 #include "gkvs.grpc.pb.h"
@@ -224,6 +225,25 @@ namespace gkvs {
         ValueResult* response_;
     };
 
+    class Table {
+
+    public:
+
+        explicit Table(const std::string& name) : name_(name) {
+        }
+        virtual ~Table() = default;
+
+
+        inline const std::string& get_name() const {
+            return name_;
+        }
+
+    private:
+
+        std::string name_;
+
+    };
+
     class Driver {
 
     public:
@@ -234,6 +254,9 @@ namespace gkvs {
 
         virtual bool configure(const json &conf, std::string& error) = 0;
         virtual bool connect(std::string& error) = 0;
+
+        virtual void list_tables(std::vector<std::string>& list) = 0;
+        virtual std::shared_ptr<Table> find_table(const std::string& table) = 0;
 
         virtual void get(const KeyOperation* request, const std::string& table, ValueResult* response) = 0;
         virtual void multiGet(const std::vector<MultiGetEntry>& entries) = 0;

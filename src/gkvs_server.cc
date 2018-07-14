@@ -176,6 +176,36 @@ namespace gkvs {
 
         }
 
+        grpc::Status list(::grpc::ServerContext *context, const ListOperation *request,
+                          ListResult *response) override {
+
+
+            switch(request->type()) {
+
+                case VIEWS:
+                    do_list_views(response);
+                    status::success(response->mutable_status());
+                    break;
+
+                case CLUSTERS:
+                    do_list_clusters(response);
+                    status::success(response->mutable_status());
+                    break;
+
+                case TABLES:
+                    do_list_tables(request->path(), response);
+                    status::success(response->mutable_status());
+                    break;
+
+                default:
+                    status::unsupported("unknown type", response->mutable_status());
+                    break;
+            }
+
+            return grpc::Status::OK;
+        }
+
+
         grpc::Status get(::grpc::ServerContext *context, const ::gkvs::KeyOperation *request,
                          ::gkvs::ValueResult *response) override {
 
@@ -506,6 +536,49 @@ namespace gkvs {
 
 
     protected:
+
+        void do_list_views(ListResult *response) {
+
+            for (auto &i : views_) {
+
+                ListEntry* entry = response->add_entry();
+                entry->set_name(i.first);
+
+            }
+
+        }
+
+        void do_list_clusters(ListResult *response) {
+
+            for (auto &i : drivers_) {
+
+                ListEntry* entry = response->add_entry();
+                entry->set_name(i.first);
+
+            }
+
+        }
+
+        void do_list_tables(const std::string& path, ListResult *response) {
+
+            auto i = drivers_.find(path);
+
+            if (i != drivers_.end()) {
+
+                std::vector<std::string> tables;
+
+                i->second->list_tables(tables);
+
+                for (auto &t : tables) {
+
+                    ListEntry* entry = response->add_entry();
+                    entry->set_name(t);
+
+                }
+
+            }
+
+        }
 
     };
 

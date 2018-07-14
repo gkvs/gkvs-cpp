@@ -27,12 +27,12 @@ using json = nlohmann::json;
 
 namespace gkvs {
 
-    class RocksTable final {
+    class RocksTable final : public Table {
 
     public:
 
         explicit RocksTable(const std::string& table) :
-                table_(table),
+                Table(table),
                 ttl_(0)
         {}
 
@@ -48,17 +48,12 @@ namespace gkvs {
 
         }
 
-        const std::string& get_table() const {
-            return table_;
-        }
-
         int get_ttl() const {
             return ttl_;
         }
 
     private:
 
-        std::string table_;
         int ttl_;
 
     };
@@ -154,6 +149,27 @@ namespace gkvs {
             map_[table] = tbl;
 
             return true;
+        }
+
+        void list_tables(std::vector<std::string>& list) override {
+
+            for (auto &i : map_) {
+                list.push_back(i.first);
+            }
+
+        }
+
+        std::shared_ptr<Table> find_table(const std::string& table) override {
+
+            auto i = map_.find(table);
+
+            if (i != map_.end()) {
+
+                return std::dynamic_pointer_cast<Table, RocksTable>(i->second);
+            }
+
+            return std::shared_ptr<Table>();
+
         }
 
         void get(const KeyOperation *request, const std::string& table, ValueResult *response) override {

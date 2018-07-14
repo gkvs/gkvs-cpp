@@ -32,12 +32,12 @@ using json = nlohmann::json;
 
 namespace gkvs {
 
-    class RedisTable final {
+    class RedisTable final : public Table {
 
     public:
 
         explicit RedisTable(const std::string& table) :
-                table_(table),
+                Table(table),
                 ttl_(0)
         {}
 
@@ -53,17 +53,12 @@ namespace gkvs {
 
         }
 
-        const std::string& get_table() const {
-            return table_;
-        }
-
         int get_ttl() const {
             return ttl_;
         }
 
     private:
 
-        std::string table_;
         int ttl_;
 
     };
@@ -141,6 +136,28 @@ namespace gkvs {
             map_[table] = tbl;
 
             return true;
+        }
+
+
+        void list_tables(std::vector<std::string>& list) override {
+
+            for (auto &i : map_) {
+                list.push_back(i.first);
+            }
+
+        }
+
+        std::shared_ptr<Table> find_table(const std::string& table) override {
+
+            auto i = map_.find(table);
+
+            if (i != map_.end()) {
+
+                return std::dynamic_pointer_cast<Table, RedisTable>(i->second);
+            }
+
+            return std::shared_ptr<Table>();
+
         }
 
 
@@ -382,7 +399,7 @@ void gkvs::RedisDriver::do_scan(const ScanOperation *request, const std::string&
 
         int affected = 0;
 
-        if (!do_scan(request, tbl->get_table(), offset, sizeof(offset), limit, &affected, writer)) {
+        if (!do_scan(request, tbl->get_name(), offset, sizeof(offset), limit, &affected, writer)) {
             break;
         }
 
@@ -495,7 +512,7 @@ void gkvs::RedisDriver::do_get(const KeyOperation *request, const std::string& t
         return;
     }
 
-    std::string key = tbl->get_table() + ":" + request->key().recordkey();
+    std::string key = tbl->get_name() + ":" + request->key().recordkey();
 
     redis_reply reply;
 
@@ -564,7 +581,7 @@ void gkvs::RedisDriver::do_put(const PutOperation *request, const std::string& t
         return;
     }
 
-    std::string key = tbl->get_table() + ":" + request->key().recordkey();
+    std::string key = tbl->get_name() + ":" + request->key().recordkey();
     const std::string& value = request->value().raw();
 
     bool updated = true;
@@ -683,7 +700,7 @@ void gkvs::RedisDriver::do_remove(const KeyOperation *request, const std::string
         return;
     }
 
-    std::string key = tbl->get_table() + ":" + request->key().recordkey();
+    std::string key = tbl->get_name() + ":" + request->key().recordkey();
 
     redis_reply reply;
     reply = (redisReply *) redisCommand(context_, "DEL %b", key.c_str(), key.size());
@@ -705,3 +722,4 @@ void gkvs::RedisDriver::do_remove(const KeyOperation *request, const std::string
 
 
 }
+
