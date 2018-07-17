@@ -123,3 +123,23 @@ brew openssl requirement in env (with make build)
 ```
 export PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
 ```
+
+#### RocksDB
+
+RocksDB is the key-value engine, not a cluster. GKVS manage data distribution for RocksDB.
+There are two major modes of data distribution in the pool: 1) data replicated 2) data partitioned
+
+All tables in RocksDB are placed in a single database with a key-prefix. Default column factory is using
+for replicated data, all other column families are having name of the Bucket.
+
+At the time of creation of rocksdb cluster we define number of buckets. By default value is 1023.
+This number likely to be prime, in order to make balancing more efficient.
+
+In client API we setup partitionKey if we want to split data between nodes (buckets). In other case
+data will be replicated and placed to default column factory.
+
+Each node that joins the pool share it's disk space and load buckets from other nodes.
+After coming to ready state it serves the traffic.
+
+In SYSTEM database (that has only default column family) we keep all data replicated and store
+information about other nodes and external clusters.
