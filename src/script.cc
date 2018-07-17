@@ -60,7 +60,7 @@ static int gkvs::lua_add_cluster(lua_State *L) {
 
     int n = lua_gettop(L);
     if (n < 3) {
-        lua_pushstring(L, "add_cluster failed, wrong number of arguments");
+        lua_pushstring(L, "add_cluster(name, driver, conf) failed, wrong number of arguments");
         lua_error(L);
         return 0;
     }
@@ -98,7 +98,7 @@ static int gkvs::lua_add_table(lua_State *L) {
 
     int n = lua_gettop(L);
     if (n < 3) {
-        lua_pushstring(L, "add_table failed, wrong number of arguments");
+        lua_pushstring(L, "add_table(name, cluster, conf) failed, wrong number of arguments");
         lua_error(L);
         return 0;
     }
@@ -133,8 +133,8 @@ static int gkvs::lua_add_table(lua_State *L) {
 static int gkvs::lua_add_view(lua_State *L) {
 
     int n = lua_gettop(L);
-    if (n < 3) {
-        lua_pushstring(L, "add_view failed, wrong number of arguments");
+    if (n < 2) {
+        lua_pushstring(L, "add_view(name, conf) failed, wrong number of arguments");
         lua_error(L);
         return 0;
     }
@@ -143,17 +143,17 @@ static int gkvs::lua_add_view(lua_State *L) {
     const char * str = luaL_checklstring(L, 1, &len);
     std::string view(str, len);
 
-    str = luaL_checklstring(L, 2, &len);
-    std::string cluster(str, len);
+    luaL_checktype(L, 2, LUA_TTABLE);
+    gkvs::lua_ser ser;
+    ser.pack_obj(L, 2);
 
-    str = luaL_checklstring(L, 3, &len);
-    std::string table(str, len);
+    std::string conf(ser.data(), ser.size());
 
     std::string error;
-    if (!gkvs::add_view(view, cluster, table, error)) {
+    if (!gkvs::add_view(view, conf, error)) {
 
         std::stringstream msg;
-        msg << "add_view(" << view << ", " << table << ", " << cluster << ") failed, " << error;
+        msg << "add_view(" << view << ", " << ") failed, " << error;
 
         lua_pushstring(L, msg.str().c_str());
         lua_error(L);

@@ -36,11 +36,11 @@ extern "C" {
 
 namespace gkvs {
 
-    bool add_cluster(const std::string& cluster, const std::string& driver, const std::string& conf, std::string& error);
+    bool add_cluster(const std::string& cluster, const std::string& driver, const std::string& conf_msgpack, std::string& error);
 
-    bool add_table(const std::string& table, const std::string& cluster, const std::string& conf, std::string& error);
+    bool add_table(const std::string& table, const std::string& cluster, const std::string& conf_msgpack, std::string& error);
 
-    bool add_view(const std::string& view, const std::string& cluster, const std::string& table, std::string& error);
+    bool add_view(const std::string& view, const std::string& conf_msgpack, std::string& error);
 
     // clusterName:string, driver:string, conf:table
     static int lua_add_cluster(lua_State *L);

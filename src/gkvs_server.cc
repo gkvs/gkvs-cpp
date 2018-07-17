@@ -139,22 +139,28 @@ namespace gkvs {
 
         }
 
-        bool add_view(const std::string& view, const std::string& cluster, const std::string& table, std::string& error) {
+        bool add_view(const std::string& view, const json& conf, std::string& error) {
 
             if (view.empty()) {
                 error = "empty view name";
                 return false;
             }
 
-            if (cluster.empty()) {
-                error = "empty cluster name";
+            auto ic = conf.find("cluster");
+            if (ic == conf.end()) {
+                error = "empty cluster property in conf";
                 return false;
             }
 
-            if (table.empty()) {
-                error = "empty table name";
+            std::string cluster = ic->get<std::string>();
+
+            ic = conf.find("table");
+            if (ic == conf.end()) {
+                error = "empty table property in conf";
                 return false;
             }
+
+            std::string table = ic->get<std::string>();
 
             auto i = views_.find(view);
             if (i != views_.end()) {
@@ -601,9 +607,7 @@ void onTerminate(int sign)
 
 }
 
-bool gkvs::add_cluster(const std::string& cluster, const std::string& driver, const std::string& msgpack, std::string& error) {
-
-    std::shared_ptr<Driver> dr;
+void parse_msgpack(const std::string& msgpack, json& conf) {
 
     int size = msgpack.size();
     std::vector<uint8_t> input;
@@ -613,7 +617,16 @@ bool gkvs::add_cluster(const std::string& cluster, const std::string& driver, co
         input.push_back(uch);
     }
 
-    json conf = json::from_msgpack(input);
+    conf = json::from_msgpack(input);
+}
+
+
+bool gkvs::add_cluster(const std::string& cluster, const std::string& driver, const std::string& conf_msgpack, std::string& error) {
+
+    std::shared_ptr<Driver> dr;
+
+    json conf;
+    parse_msgpack(conf_msgpack, conf);
 
     if (driver == "redis") {
 
@@ -647,23 +660,20 @@ bool gkvs::add_cluster(const std::string& cluster, const std::string& driver, co
 
 }
 
-bool gkvs::add_table(const std::string& table, const std::string& cluster, const std::string& msgpack, std::string& error) {
+bool gkvs::add_table(const std::string& table, const std::string& cluster, const std::string& conf_msgpack, std::string& error) {
 
-    int size = msgpack.size();
-    std::vector<uint8_t> input;
-    for (int i = 0; i < size; ++i) {
-        char ch = msgpack[i];
-        uint8_t uch = static_cast<uint8_t>(ch);
-        input.push_back(uch);
-    }
-
-    json conf = json::from_msgpack(input);
+    json conf;
+    parse_msgpack(conf_msgpack, conf);
 
     return sync_service->add_table(table, cluster, conf, error);
 }
 
-bool gkvs::add_view(const std::string& view, const std::string& cluster, const std::string& table, std::string& error) {
-    return sync_service->add_view(view, cluster, table, error);
+bool gkvs::add_view(const std::string& view, const std::string& conf_msgpack, std::string& error) {
+
+    json conf;
+    parse_msgpack(conf_msgpack, conf);
+
+    return sync_service->add_view(view, conf, error);
 }
 
 
