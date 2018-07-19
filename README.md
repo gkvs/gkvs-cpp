@@ -143,3 +143,19 @@ After coming to ready state it serves the traffic.
 
 In SYSTEM database (that has only default column family) we keep all data replicated and store
 information about other nodes and external clusters.
+
+
+### Raft
+
+Raft consensus algorithm is using to replicate state written in RocksDB instance in each node.
+By default GKVS has SYSTEM database whereas it stores information about peers, cluster, tables and views.
+This state must be the same in all peer nodes (server nodes) GKVS. Also information about data distribution,
+partitions and bucket maps have to be replicates to all peers as well (and clients).
+
+Raft consensus algorithm is clear version of Paxos.
+For more details on Raft, you can read [In Search of an Understandable Consensus Algorithm][raft-paper] by Diego Ongaro and John Ousterhout.
+
+[raft-paper]: https://ramcloud.stanford.edu/raft.pdf
+
+
+
