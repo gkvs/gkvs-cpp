@@ -1,6 +1,17 @@
 # gkvs
 Generic Key-Value Storage
 
+Universal API to access data in multiple key-value databases
+
+### Supported Databases
+* Redis
+* Aerospike
+* RocksDB (replicated on raft)
+
+### Coming databases
+* MongoDB
+* FoundationDB
+
 ### Vision
 * Federated tables (external clusters: Aerospike, Redis)
 * Internal tables (engine: RocksDB)
