@@ -25,7 +25,10 @@
 
 using json = nlohmann::json;
 
+
 namespace gkvs {
+
+    static const int DEF_ROCKS_BUCKETS = 1023;
 
     class RocksTable final : public Table {
 
@@ -71,17 +74,38 @@ namespace gkvs {
 
             LOG(INFO) << "rocksdb[" << get_name() << "] configure=" << conf << std::endl;
 
+            auto i = conf.find("db_name");
+            if (i == conf.end()) {
+                error = "property 'db_name' is not defined";
+                return false;
+            }
+
+            db_name_ = i->get<std::string>();
+
             options_.IncreaseParallelism();
             options_.OptimizeLevelStyleCompaction();
             options_.create_if_missing = true;
             options_.create_missing_column_families= true;
 
-            options_.compression = kBZip2Compression;
+            i = conf.find("buckets");
+            if (i != conf.end()) {
+                buckets_ = i->get<int>();
+            }
+            else {
+                buckets_ = DEF_ROCKS_BUCKETS;
+            }
 
-            auto db_paths_it = conf.find("db_paths");
-            if (db_paths_it != conf.end()) {
+            i = conf.find("compression");
+            if (i != conf.end()) {
+                std::string compr = i->get<std::string>();
+                options_.compression = parse_compression(compr);
+            }
 
-                json db_paths = *db_paths_it;
+            /**
+            i = conf.find("db_paths");
+            if (i != conf.end()) {
+
+                json db_paths = *i;
 
                 auto path_it = db_paths.find("path");
                 auto target_size_it = db_paths.find("target_size");
@@ -94,16 +118,19 @@ namespace gkvs {
                     options_.db_paths.push_back(DbPath(path, target_size));
                 }
             }
+             **/
 
-            auto db_log_dir_it = conf.find("db_log_dir");
-            if (db_log_dir_it != conf.end()) {
-                options_.db_log_dir = db_log_dir_it->get<std::string>();
+            /**
+            i = conf.find("db_log_dir");
+            if (i != conf.end()) {
+                options_.db_log_dir = i->get<std::string>();
             }
 
-            auto wal_dir_it = conf.find("wal_dir");
-            if (wal_dir_it != conf.end()) {
-                options_.wal_dir = wal_dir_it->get<std::string>();
+            i = conf.find("wal_dir");
+            if (i != conf.end()) {
+                options_.wal_dir = i->get<std::string>();
             }
+             **/
 
             return true;
 
@@ -111,14 +138,25 @@ namespace gkvs {
 
         bool connect(std::string& error) override {
 
-            std::string testDb = "test";
+            column_families_.push_back(ColumnFamilyDescriptor(
+                    kDefaultColumnFamilyName, ColumnFamilyOptions()));
 
-            rocksdb::Status s = DB::Open(options_, testDb.c_str(), &db_);
+            std::vector<std::string> existing_names;
+
+            rocksdb::Status s = DB::Open(options_, db_name_.c_str(), &db_);
 
             if (!s.ok()) {
                 error = s.ToString();
                 return false;
             }
+
+            /**
+            LOG(INFO) << "existing_names: [";
+            for (const auto &n : existing_names) {
+                LOG(INFO) << n << ", ";
+            }
+            LOG(INFO) << "]"  << std::endl;
+             **/
 
             return true;
         }
@@ -205,9 +243,15 @@ namespace gkvs {
 
     private:
 
+        std::string db_name_;
+
         std::string db_dir_;
         DB* db_;
         Options options_;
+        int buckets_;
+
+        std::vector<ColumnFamilyDescriptor> column_families_;
+        std::vector<ColumnFamilyHandle*> handles_;
 
         std::unordered_map<std::string, std::shared_ptr<RocksTable>> map_;
 
@@ -273,6 +317,40 @@ namespace gkvs {
             }
 
         }
+
+        inline CompressionType parse_compression(const std::string& compression) {
+
+            if (compression == "snappy") {
+                return kSnappyCompression;
+            }
+
+            if (compression == "lz4") {
+                return kLZ4Compression;
+            }
+
+            if (compression == "lz4h") {
+                return kLZ4HCCompression;
+            }
+
+            if (compression == "zstd") {
+                return kZSTDNotFinalCompression;
+            }
+
+            if (compression == "bz2") {
+                return kBZip2Compression;
+            }
+
+            if (compression == "zlib") {
+                return kZlibCompression;
+            }
+
+            if (compression == "xpress") {
+                return kXpressCompression;
+            }
+
+            return kNoCompression;
+        }
+
 
     };
 

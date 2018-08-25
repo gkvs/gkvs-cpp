@@ -1,53 +1,48 @@
 # gkvs
+
 Generic Key-Value Storage
 
-Universal API to access data in multiple key-value databases
+Universal API to access data in multiple key-value databases (proxy and state-less)
 
 ### Supported Databases
 * Redis
 * Aerospike
-* RocksDB (replicated on raft)
 
 ### Coming databases
 * MongoDB
 * FoundationDB
 
 ### Vision
-* Federated tables (external clusters: Aerospike, Redis)
-* Internal tables (engine: RocksDB)
 * Zero-config
 * Server written on C/C++, client on Java
-* Raft consensus algorithm to manage nodes
 * Protocol on gRPC/Protobuf
-* Schema-less, all data in msgpack (binary JSON)
-* Automatic load-balancer
-* Failover support
-* Multi datacenter support
-* No plain traffic, always SSL
+* Schema-less, all data in MessagePack (aka binary JSON)
+* Automatic load-balancer could work in front of GKVS nodes (must support gRPC protocol)
+* Supports SSL
 
 ### API Design
 
-* Key is byte array or it's hash, NOT NULL
-* Value is byte array in msgpack, NOT NULL
+* Key is byte array or crypto hash, NOT NULL
+* Value is byte array in MessagePack, NOT NULL
 
 Basic Operations:
-* get - gets value (and metadata) by key, if not found return null (not error)
+* get - gets value (with/only metadata) by key. If not found return null.
 * put - puts value by key
-* compareAndPut - puts value by key only if version match
+* compareAndSet - puts value by key only if version match
 * remove - removes value by key
 
 Bulk Operations:
-* multiGet - gets values in a batch
+* multiGet - gets multi entries in one request
 
 Stream Operations:
 * getAll - gets values as stream
 * putAll - puts values as stream
 * removeAll - removes values as stream
-* scan - query all key-value pairs with some conditions
+* scan - query key-values as stream
 
 ### Errors 
 
-All errors are passthrough to client.
+All errors are pass-through to client.
 
 ### Build
 
@@ -56,14 +51,23 @@ Required libraries:
 * GRPC 1.2.0
 * Aerospike Client
 * Redis
-* RocksDB
 * LuaJIT
 * Msgpack
 * LZ4, ZSDT, Snappy, BZ2, Z
 * OpenSSL
 
-Build:
+### Build
+
+Legacy make:
 ```
+make
+```
+
+General cmake:
+```
+mkdir build
+cd build
+cmake ..
 make
 ```
 
@@ -84,12 +88,6 @@ add_table("test", "redis1", { ttl = 100 } );
 add_view("TEST", "redis1", "test");
 
 ```
-
-Server node receives configuration commands by network and execute them immediatelly.
-Raft consensus algorithm is using to distribute them in a pool.
-
-All succesfully executed commands will be appended to the command log and written to text file on disk (editable).
-On startup node will execute all of them.
 
 ### Build
 
@@ -134,39 +132,5 @@ brew openssl requirement in env (with make build)
 ```
 export PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
 ```
-
-#### RocksDB
-
-RocksDB is the key-value engine, not a cluster. GKVS manage data distribution for RocksDB.
-There are two major modes of data distribution in the pool: 1) data replicated 2) data partitioned
-
-All tables in RocksDB are placed in a single database with a key-prefix. Default column factory is using
-for replicated data, all other column families are having name of the Bucket.
-
-At the time of creation of rocksdb cluster we define number of buckets. By default value is 1023.
-This number likely to be prime, in order to make balancing more efficient.
-
-In client API we setup partitionKey if we want to split data between nodes (buckets). In other case
-data will be replicated and placed to default column factory.
-
-Each node that joins the pool share it's disk space and load buckets from other nodes.
-After coming to ready state it serves the traffic.
-
-In SYSTEM database (that has only default column family) we keep all data replicated and store
-information about other nodes and external clusters.
-
-
-### Raft
-
-Raft consensus algorithm is using to replicate state written in RocksDB instance in each node.
-By default GKVS has SYSTEM database whereas it stores information about peers, cluster, tables and views.
-This state must be the same in all peer nodes (server nodes) GKVS. Also information about data distribution,
-partitions and bucket maps have to be replicates to all peers as well (and clients).
-
-Raft consensus algorithm is clear version of Paxos.
-For more details on Raft, you can read [In Search of an Understandable Consensus Algorithm][raft-paper] by Diego Ongaro and John Ousterhout.
-
-[raft-paper]: https://ramcloud.stanford.edu/raft.pdf
-
 
 
