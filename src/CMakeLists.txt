@@ -24,46 +24,6 @@ list(APPEND LIB_LIST ${_LUAJIT_LIB})
 find_package(msgpack CONFIG REQUIRED)
 message(STATUS "Using msgpack ${msgpack_VERSION}")
 
-# RocksDB
-
-#if (WIN32)
-#    set(_FINDPACKAGE_ROCKSDB_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/../rocksdb/cmake")
-#else()
-#    set(_FINDPACKAGE_ROCKSDB_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/../rocksdb/lib/cmake/rocksdb")
-#endif()
-
-if(NOT rocksdb_DIR)
-    set(rocksdb_DIR "${CMAKE_CURRENT_BINARY_DIR}/../rocksdb/lib/cmake/rocksdb")
-endif()
-
-message(STATUS "Using rocksdb_DIR ${rocksdb_DIR}")
-find_package(rocksdb CONFIG REQUIRED)
-set(_ROCKSDB_LIB rocksdb)
-message(STATUS "Using rocksdb ${rocksdb_VERSION}")
-
-# Snappy
-
-find_library(_SNAPPY_LIB snappy)
-message(STATUS "Using snappy ${_SNAPPY_LIB}")
-list(APPEND LIB_LIST ${_SNAPPY_LIB})
-
-# Z-standard
-
-find_library(_ZSTD_LIB zstd)
-message(STATUS "Using zstd ${_ZSTD_LIB}")
-list(APPEND LIB_LIST ${_ZSTD_LIB})
-
-# LZ4
-
-find_library(_LZ4_LIB lz4)
-message(STATUS "Using lz4 ${_LZ4_LIB}")
-list(APPEND LIB_LIST ${_LZ4_LIB})
-
-# BZ2
-
-find_library(_BZ2_LIB bz2)
-message(STATUS "Using bz2 ${_BZ2_LIB}")
-list(APPEND LIB_LIST ${_BZ2_LIB})
 
 # REDIS
 
@@ -200,7 +160,6 @@ add_executable(gkvs
         "as_driver_tests.cc"
         "as_helper.cc"
         "redis_driver.cc"
-        "rocks_driver.cc"
         "crypto.cc"
         "script.cc"
         ${gkvs_proto_srcs}
@@ -211,7 +170,6 @@ target_link_libraries(gkvs
         ${_PROTOBUF_LIB}
         glog
         msgpackc
-        ${_ROCKSDB_LIB}
         ${_REDIS_LIB}
         ${_AS_LIB}
         ${LIB_LIST})

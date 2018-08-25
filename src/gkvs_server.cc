@@ -638,11 +638,6 @@ bool gkvs::add_cluster(const std::string& cluster, const std::string& driver, co
         dr = gkvs::create_aerospike_driver(cluster, FLAGS_lua_dir);
 
     }
-    else if (driver == "rocks") {
-
-        dr = gkvs::create_rocks_driver(cluster, FLAGS_work_dir);
-
-    }
     else {
         error = "unknown driver: " + driver;
         return false;

@@ -285,7 +285,6 @@ namespace gkvs {
 
     std::shared_ptr<Driver> create_redis_driver(const std::string& name);
 
-    std::shared_ptr<Driver> create_rocks_driver(const std::string& name, const std::string& work_dir);
 
 }
 

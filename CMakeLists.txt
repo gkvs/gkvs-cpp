@@ -27,34 +27,6 @@ list(APPEND LIB_LIST ${_LUAJIT_LIB})
 find_package(msgpack CONFIG REQUIRED)
 message(STATUS "Using msgpack ${msgpack_VERSION}")
 
-# RocksDB
-
-find_library(_ROCKSDB_LIB librocksdb.a rocksdb)
-message(STATUS "Using rocksdb ${_ROCKSDB_LIB}")
-
-# Snappy
-
-find_library(_SNAPPY_LIB snappy)
-message(STATUS "Using snappy ${_SNAPPY_LIB}")
-list(APPEND LIB_LIST ${_SNAPPY_LIB})
-
-# Z-standard
-
-find_library(_ZSTD_LIB zstd)
-message(STATUS "Using zstd ${_ZSTD_LIB}")
-list(APPEND LIB_LIST ${_ZSTD_LIB})
-
-# LZ4
-
-find_library(_LZ4_LIB lz4)
-message(STATUS "Using lz4 ${_LZ4_LIB}")
-list(APPEND LIB_LIST ${_LZ4_LIB})
-
-# BZ2
-
-find_library(_BZ2_LIB bz2)
-message(STATUS "Using bz2 ${_BZ2_LIB}")
-list(APPEND LIB_LIST ${_BZ2_LIB})
 
 # REDIS
 
@@ -196,7 +168,6 @@ add_executable(gkvs
         "src/as_driver_tests.cc"
         "src/as_helper.cc"
         "src/redis_driver.cc"
-        "src/rocks_driver.cc"
         "src/crypto.cc"
         "src/script.cc"
         ${gkvs_proto_srcs}
@@ -210,7 +181,6 @@ target_link_libraries(gkvs
         ${_PROTOBUF_LIB}
         glog
         msgpackc
-        ${_ROCKSDB_LIB}
         ${_REDIS_LIB}
         ${_AS_LIB}
         ${LIB_LIST})

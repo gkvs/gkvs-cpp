@@ -73,7 +73,7 @@ make
 
 Run:
 ```
-./src/gkvs_server redis.conf
+./src/gkvs_server redis1.conf
 ```
 
 ### Configure

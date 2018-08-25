@@ -82,17 +82,6 @@ ExternalProject_Add(msgpack
         -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/msgpack
         )
 
-# Builds rocksdb project from the git submodule
-ExternalProject_Add(rocksdb
-        PREFIX rocksdb
-        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../modules/rocksdb"
-        CMAKE_CACHE_ARGS
-        -DWITH_SNAPPY:BOOL=ON
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/rocksdb
-        )
-set(rocksdb_DIR "${CMAKE_CURRENT_BINARY_DIR}/rocksdb/lib/cmake/rocksdb")
-set(_FINDPACKAGE_ROCKSDB_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/rocksdb/lib/cmake/rocksdb")
-
 # Build gkvs as external project, now all deps are available in find_package
 ExternalProject_Add(gkvs
         PREFIX gkvs
@@ -105,6 +94,6 @@ ExternalProject_Add(gkvs
         -DZLIB_ROOT:STRING=${CMAKE_CURRENT_BINARY_DIR}/zlib
         ${_CMAKE_ARGS_OPENSSL_ROOT_DIR}
         -DgRPC_DIR:PATH=${CMAKE_CURRENT_BINARY_DIR}/grpc/lib/cmake/grpc
-        DEPENDS protobuf grpc msgpack rocksdb
+        DEPENDS protobuf grpc msgpack
         )
 
