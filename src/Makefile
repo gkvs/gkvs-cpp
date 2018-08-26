@@ -44,7 +44,6 @@ PROTOC = protoc
 GRPC_CPP_PLUGIN = grpc_cpp_plugin
 GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
 AEROFLAGS = -DAS_USE_LIBEVENT -levent -levent_pthreads -lssl -lcrypto -lm -lz ../modules/aerospike-client-c/target/$(AS_TARGET)/lib/libaerospike.a
-ROCKSFLAGS = -lbz2 -lrocksdb -lsnappy -lzstd -llz4
 
 PROJECT=gkvs
 PROTOS_PATH = ../protos
@@ -56,8 +55,8 @@ all: system-check $(PROJECT)-cli $(PROJECT)
 $(PROJECT)-cli: $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_client.o helper.o
 	$(CXX) $^ $(LDFLAGS) -o $@
 
-$(PROJECT): $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o as_helper.o as_driver_tests.o redis_driver.o rocks_driver.o crypto.o script.cc
-	$(CXX) $^ $(LDFLAGS) $(AEROFLAGS) $(ROCKSFLAGS) $(LUA_FLAGS) -o $@
+$(PROJECT): $(PROJECT).pb.o $(PROJECT).grpc.pb.o $(PROJECT)_server.o helper.o as_driver.o as_helper.o as_driver_tests.o redis_driver.o crypto.o script.cc
+	$(CXX) $^ $(LDFLAGS) $(AEROFLAGS) $(LUA_FLAGS) -o $@
 
 #crypto.o: crypto.cc
 #	$(CXX) $^ -c -o $@

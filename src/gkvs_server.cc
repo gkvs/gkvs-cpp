@@ -593,6 +593,7 @@ namespace gkvs {
 
 DEFINE_string(work_dir, ".", "Work dir");
 DEFINE_string(lua_dir, "", "User lua scripts directory for Aerospike");
+DEFINE_bool(use_ssl, false, "Use SSL");
 DEFINE_bool(run_tests, false, "Run functional tests");
 DEFINE_string(host_port, "0.0.0.0:4040", "Bind sync server host:port");
 
@@ -684,7 +685,7 @@ bool load_script(const std::string& content) {
     return true;
 }
 
-std::shared_ptr<grpc::ServerCredentials> create_server_credentials() {
+std::shared_ptr<grpc::ServerCredentials> create_ssl_server_credentials() {
 
     std::string gkvs_keys = gkvs::get_keys();
     std::string hostname = gkvs::get_hostname();
@@ -737,7 +738,9 @@ void RunServer(const std::string& filename) {
         return;
     }
 
-    std::shared_ptr<grpc::ServerCredentials> creds = create_server_credentials();
+    std::shared_ptr<grpc::ServerCredentials> creds = FLAGS_use_ssl ?
+                                                     create_ssl_server_credentials() :
+                                                     grpc::InsecureServerCredentials();
 
     build_sync_server(creds);
 
