@@ -5,7 +5,7 @@ project(gkvs C CXX)
 set(CMAKE_CXX_STANDARD 11)
 
 if(NOT MSVC)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -O3")
 else()
   add_definitions(-D_WIN32_WINNT=0x600)
 endif()
@@ -113,6 +113,12 @@ find_library(_CARES_LIB NAMES libcares.a cares)
 message(STATUS "Using Cares ${_CARES_LIB}")
 list(APPEND LIB_LIST ${_CARES_LIB})
 list(APPEND CLIENT_LIB_LIST ${_CARES_LIB})
+
+# GPR
+find_library(_GPR_LIB NAMES libgpr.a gpr)
+message(STATUS "Using GPR ${_GPR_LIB}")
+list(APPEND LIB_LIST ${_GPR_LIB})
+list(APPEND CLIENT_LIB_LIST ${_GPR_LIB})
 
 # GRPC
 
