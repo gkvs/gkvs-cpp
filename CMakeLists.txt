@@ -18,20 +18,22 @@ include(FindPkgConfig)
 
 # LuaJIT
 
-find_library(_LUAJIT_LIB NAMES libluajit-5.1.a luajit-5.1 luajit)
+find_library(_LUAJIT_LIB NAMES libluajit-5.1.a luajit-5.1)
 message(STATUS "Using luajit  ${_LUAJIT_LIB}")
 list(APPEND LIB_LIST ${_LUAJIT_LIB})
 
 # Msgpack
 
-find_package(msgpack CONFIG REQUIRED)
-message(STATUS "Using msgpack ${msgpack_VERSION}")
+find_library(_MSGPACK_LIB libmsgpackc.a msgpackc)
+message(STATUS "Using msgpack lib ${_MSGPACK_LIB}")
+list(APPEND LIB_LIST ${_MSGPACK_LIB})
 
 
 # REDIS
 
 find_library(_REDIS_LIB libhiredis.a hiredis)
 message(STATUS "Using hiredis ${_REDIS_LIB}")
+list(APPEND LIB_LIST ${_REDIS_LIB})
 
 # JSON
 
@@ -46,6 +48,7 @@ set(_AS_LIB_PATH "modules/aerospike-client-c/target/${CMAKE_SYSTEM_NAME}-x86_64/
 
 file(GLOB _AS_LIB "${_AS_LIB_PATH}/libaerospike.a")
 message(STATUS "Using Aerospike Client ${_AS_LIB}")
+list(APPEND LIB_LIST ${_AS_LIB})
 
 find_library(_Z_LIB NAMES libz.a z)
 message(STATUS "Using z ${_Z_LIB}")
@@ -63,8 +66,9 @@ list(APPEND LIB_LIST ${_EVENT_LIB_PTHREADS})
 
 # GLOG
 
-add_subdirectory(modules/glog ${CMAKE_CURRENT_BINARY_DIR}/glog EXCLUDE_FROM_ALL)
-message(STATUS "Using GLOG via add_subdirectory modules/glog")
+find_library(_GLOG_LIB NAMES libglog.a glog)
+message(STATUS "Using glog ${_GLOG_LIB}")
+list(APPEND LIB_LIST ${_GLOG_LIB})
 
 # Protobuf
 
@@ -96,6 +100,7 @@ find_program(_GRPC_CPP_PLUGIN_EXECUTABLE
 
 # GFLAGS
 
+set(gflags_STATIC ON)
 find_package(gflags CONFIG REQUIRED)
 message("-- Using gflags ${gflags_VERSION}")
 list(APPEND LIB_LIST gflags)
@@ -179,9 +184,6 @@ message("-- LIB_LIST ${LIB_LIST}")
 target_link_libraries(gkvs
         ${_GRPC_GRPCPP}
         ${_PROTOBUF_LIB}
-        glog
         msgpackc
-        ${_REDIS_LIB}
-        ${_AS_LIB}
         ${LIB_LIST})
 
