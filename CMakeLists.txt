@@ -5,7 +5,7 @@ project(gkvs C CXX)
 set(CMAKE_CXX_STANDARD 11)
 
 if(NOT MSVC)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O3")
 else()
   add_definitions(-D_WIN32_WINNT=0x600)
 endif()
@@ -14,6 +14,8 @@ message(STATUS "Running on ${CMAKE_SYSTEM_NAME}")
 message(STATUS "Direct build")
 
 include(FindPkgConfig)
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-as-needed -ldl -v")
 
 # LuaJIT
 
@@ -58,9 +60,13 @@ list(APPEND CLIENT_LIB_LIST ${_Z_LIB})
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DAS_USE_LIBEVENT")
 
+# LibEvent
+
 find_library(_EVENT_LIB NAMES libevent.a event)
 message(STATUS "Using libevent ${_EVENT_LIB}")
 list(APPEND LIB_LIST ${_EVENT_LIB})
+
+# PThreads
 
 find_library(_EVENT_LIB_PTHREADS NAMES libevent_pthreads.a event_pthreads)
 message(STATUS "Using libevent_pthreads ${_EVENT_LIB_PTHREADS}")
@@ -89,10 +95,14 @@ message(STATUS "Using protobuf ${_PROTOBUF_LIB}")
 list(APPEND LIB_LIST ${_PROTOBUF_LIB})
 list(APPEND CLIENT_LIB_LIST ${_PROTOBUF_LIB})
 
+# Protoc
+
 find_program(_PROTOBUF_PROTOC
           NAMES protoc
           DOC "protoc compiler"
           )
+message(STATUS "Using protoc ${_PROTOBUF_PROTOC}")
+
 
 # CARES
 
@@ -120,12 +130,11 @@ list(APPEND LIB_LIST ${_GRPCPP_LIB})
 list(APPEND CLIENT_LIB_LIST ${_GRPCPP_LIB})
 
 
-
 find_program(_GRPC_CPP_PLUGIN_EXECUTABLE
         NAMES grpc_cpp_plugin
         DOC "grpc_cpp_plugin compiler"
         )
-
+message(STATUS "Using gRPC++ Plugin ${_GRPC_CPP_PLUGIN_EXECUTABLE}")
 
 # OpenSSL
 
