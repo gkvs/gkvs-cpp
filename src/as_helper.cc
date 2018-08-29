@@ -487,11 +487,11 @@ void gkvs::as_record_ser::stringify(msgpack_object& obj, char* buf, uint32_t siz
         }
 
         case MSGPACK_OBJECT_POSITIVE_INTEGER:
-            snprintf(buf, size, "%llu", obj.via.u64);
+            snprintf(buf, size, "%lu", obj.via.u64);
             break;
 
         case MSGPACK_OBJECT_NEGATIVE_INTEGER:
-            snprintf(buf, size, "%lld", obj.via.i64);
+            snprintf(buf, size, "%ld", obj.via.i64);
             break;
 
         default:
