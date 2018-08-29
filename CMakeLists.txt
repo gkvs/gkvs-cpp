@@ -10,12 +10,15 @@ else()
   add_definitions(-D_WIN32_WINNT=0x600)
 endif()
 
+if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-as-needed -ldl -v")
+endif()
+
 message(STATUS "Running on ${CMAKE_SYSTEM_NAME}")
 message(STATUS "Direct build")
 
 include(FindPkgConfig)
 
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-as-needed -ldl -v")
 
 # LuaJIT
 
