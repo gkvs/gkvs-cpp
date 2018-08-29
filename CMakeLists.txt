@@ -18,7 +18,7 @@ include(FindPkgConfig)
 
 # LuaJIT
 
-find_library(_LUAJIT_LIB luajit)
+find_library(_LUAJIT_LIB NAMES libluajit-5.1.a luajit-5.1 luajit)
 message(STATUS "Using luajit  ${_LUAJIT_LIB}")
 list(APPEND LIB_LIST ${_LUAJIT_LIB})
 
@@ -37,7 +37,7 @@ message(STATUS "Using hiredis ${_REDIS_LIB}")
 
 include_directories("modules/nlohmann_json/include")
 
-# Aerospike
+# Aerospike (Do not install it, becasue it compiles for different event loops)
 
 include_directories("modules/aerospike-client-c/modules/common/src/include")
 include_directories("modules/aerospike-client-c/src/include")
@@ -47,17 +47,17 @@ set(_AS_LIB_PATH "modules/aerospike-client-c/target/${CMAKE_SYSTEM_NAME}-x86_64/
 file(GLOB _AS_LIB "${_AS_LIB_PATH}/libaerospike.a")
 message(STATUS "Using Aerospike Client ${_AS_LIB}")
 
-find_library(_Z_LIB z)
+find_library(_Z_LIB NAMES libz.a z)
 message(STATUS "Using z ${_Z_LIB}")
 list(APPEND LIB_LIST ${_Z_LIB})
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DAS_USE_LIBEVENT")
 
-find_library(_EVENT_LIB libevent.a event)
+find_library(_EVENT_LIB NAMES libevent.a event)
 message(STATUS "Using libevent ${_EVENT_LIB}")
 list(APPEND LIB_LIST ${_EVENT_LIB})
 
-find_library(_EVENT_LIB_PTHREADS libevent_pthreads.a event_pthreads)
+find_library(_EVENT_LIB_PTHREADS NAMES libevent_pthreads.a event_pthreads)
 message(STATUS "Using libevent_pthreads ${_EVENT_LIB_PTHREADS}")
 list(APPEND LIB_LIST ${_EVENT_LIB_PTHREADS})
 
