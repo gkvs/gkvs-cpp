@@ -21,3 +21,8 @@ popd
 popd
 
 
+git clone http://luajit.org/git/luajit-2.0.git
+cd luajit-2.0
+git checkout tags/v2.0.5
+make
+sudo make install

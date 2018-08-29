@@ -2,6 +2,10 @@
 
 Generic Key-Value Storage
 
+## DEPRECATED
+Server node now will be supported only on GoLang, please take a look on gkvs-go
+
+
 Universal API to access data in multiple key-value databases (proxy and state-less)
 
 ### Supported Databases
