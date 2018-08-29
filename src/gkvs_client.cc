@@ -32,6 +32,8 @@
 #include "helper.h"
 #include "gkvs.grpc.pb.h"
 
+#include <grpc/support/log.h>
+
 #include <glog/logging.h>
 #include "gflags/gflags.h"
 
@@ -76,6 +78,7 @@ int main(int argc, char** argv) {
 
     std::cout << "gKVS Client" << std::endl;
 
+    std::cout << "Log: " << gpr_log_severity_string(GPR_LOG_SEVERITY_DEBUG) << std::endl;
 
     if (FLAGS_run_tests) {
         run_tests();
