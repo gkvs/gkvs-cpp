@@ -49,9 +49,12 @@ file(GLOB _AS_LIB "${_AS_LIB_PATH}/libaerospike.a")
 message(STATUS "Using Aerospike Client ${_AS_LIB}")
 list(APPEND LIB_LIST ${_AS_LIB})
 
+# Z
+
 find_library(_Z_LIB NAMES libz.a z)
-message(STATUS "Using z ${_Z_LIB}")
+message(STATUS "Using zlib ${_Z_LIB}")
 list(APPEND LIB_LIST ${_Z_LIB})
+list(APPEND CLIENT_LIB_LIST ${_Z_LIB})
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DAS_USE_LIBEVENT")
 
@@ -68,40 +71,55 @@ list(APPEND LIB_LIST ${_EVENT_LIB_PTHREADS})
 find_library(_GLOG_LIB NAMES libglog.a glog)
 message(STATUS "Using glog ${_GLOG_LIB}")
 list(APPEND LIB_LIST ${_GLOG_LIB})
+list(APPEND CLIENT_LIB_LIST ${_GLOG_LIB})
 
-# GFLAGS
+# GFLAGS (grpc is using it as dynamic lib)
 
 set(gflags_STATIC ON)
 find_package(gflags CONFIG REQUIRED)
 message("-- Using gflags ${gflags_VERSION} libs ${gflags_LIBRARIES}")
 list(APPEND LIB_LIST ${gflags_LIBRARIES})
-
-#set(glog_STATIC ON)
-#find_package(glog CONFIG REQUIRED)
-#message("-- Using glog ${glog_VERSION} libs ${glog_LIBRARIES}")
-#list(APPEND LIB_LIST ${glog_LIBRARIES})
+list(APPEND CLIENT_LIB_LIST ${gflags_LIBRARIES})
 
 # Protobuf
 
 #pkg_check_modules (protobuf protobuf>=3.5.1)
-set(protobuf_STATIC ON)
-find_package(protobuf CONFIG REQUIRED)
-message(STATUS "Using protobuf ${protobuf_VERSION} libs ${protobuf_LIBRARIES}")
-
-set(_PROTOBUF_LIB ${protobuf_LIBRARIES})
+find_library(_PROTOBUF_LIB NAMES libprotobuf.a protobuf)
+message(STATUS "Using protobuf ${_PROTOBUF_LIB}")
+list(APPEND LIB_LIST ${_PROTOBUF_LIB})
+list(APPEND CLIENT_LIB_LIST ${_PROTOBUF_LIB})
 
 find_program(_PROTOBUF_PROTOC
           NAMES protoc
           DOC "protoc compiler"
           )
 
+# CARES
+
+find_library(_CARES_LIB NAMES libcares.a cares)
+message(STATUS "Using Cares ${_CARES_LIB}")
+list(APPEND LIB_LIST ${_CARES_LIB})
+list(APPEND CLIENT_LIB_LIST ${_CARES_LIB})
+
+# GRPC
+
+find_library(_GRPC_LIB NAMES libgrpc.a grpc)
+message(STATUS "Using gRPC ${_GRPC_LIB}")
+
+list(APPEND LIB_LIST ${_GRPC_LIB})
+list(APPEND CLIENT_LIB_LIST ${_GRPC_LIB})
+
 # GRPC++
 
-pkg_check_modules (grpc++ grpc++>=1.2.0)
+#pkg_check_modules (grpc++ grpc++>=1.2.0)
 
-message(STATUS "Using gRPC++ ${grpc++_VERSION}")
+find_library(_GRPCPP_LIB NAMES libgrpc++.a grpc++)
+message(STATUS "Using gRPC++ ${_GRPCPP_LIB}")
 
-set(_GRPC_GRPCPP grpc++)
+list(APPEND LIB_LIST ${_GRPCPP_LIB})
+list(APPEND CLIENT_LIB_LIST ${_GRPCPP_LIB})
+
+
 
 find_program(_GRPC_CPP_PLUGIN_EXECUTABLE
         NAMES grpc_cpp_plugin
@@ -115,12 +133,10 @@ if(NOT OPENSSL_ROOT_DIR)
   set(OPENSSL_ROOT_DIR "$ENV{OPENSSL_ROOT_DIR}")
 endif()
 
-if(NOT OPENSSL_ROOT_DIR)
-  set(OPENSSL_ROOT_DIR "/usr/local/Cellar/openssl/1.0.2o_2")
-endif()
 
 message("OpenSSL root dir: ${OPENSSL_ROOT_DIR}")
 
+set(OPENSSL_STATIC ON)
 set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)
 
@@ -163,9 +179,9 @@ add_executable(gkvs-cli
         ${gkvs_proto_srcs}
         ${gkvs_grpc_srcs})
 
-target_link_libraries(gkvs-cli
-        ${_GRPC_GRPCPP}
-        ${_PROTOBUF_LIB})
+message("-- CLIENT_LIB_LIST ${CLIENT_LIB_LIST}")
+
+target_link_libraries(gkvs-cli PRIVATE ${CLIENT_LIB_LIST})
 
 # Build server
 
@@ -184,8 +200,5 @@ add_executable(gkvs
 message("-- LIB_LIST ${LIB_LIST}")
 
 
-target_link_libraries(gkvs
-        ${_GRPC_GRPCPP}
-        ${_PROTOBUF_LIB}
-        ${LIB_LIST})
+target_link_libraries(gkvs PRIVATE ${LIB_LIST})
 
