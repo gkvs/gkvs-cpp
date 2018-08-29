@@ -11,7 +11,6 @@ else()
 endif()
 
 message(STATUS "Running on ${CMAKE_SYSTEM_NAME}")
-
 message(STATUS "Direct build")
 
 include(FindPkgConfig)
@@ -70,11 +69,24 @@ find_library(_GLOG_LIB NAMES libglog.a glog)
 message(STATUS "Using glog ${_GLOG_LIB}")
 list(APPEND LIB_LIST ${_GLOG_LIB})
 
+# GFLAGS
+
+set(gflags_STATIC ON)
+find_package(gflags CONFIG REQUIRED)
+message("-- Using gflags ${gflags_VERSION} libs ${gflags_LIBRARIES}")
+list(APPEND LIB_LIST ${gflags_LIBRARIES})
+
+#set(glog_STATIC ON)
+#find_package(glog CONFIG REQUIRED)
+#message("-- Using glog ${glog_VERSION} libs ${glog_LIBRARIES}")
+#list(APPEND LIB_LIST ${glog_LIBRARIES})
+
 # Protobuf
 
-pkg_check_modules (protobuf protobuf>=3.5.1)
-
-message(STATUS "Using protobuf ${protobuf_VERSION}")
+#pkg_check_modules (protobuf protobuf>=3.5.1)
+set(protobuf_STATIC ON)
+find_package(protobuf CONFIG REQUIRED)
+message(STATUS "Using protobuf ${protobuf_VERSION} libs ${protobuf_LIBRARIES}")
 
 set(_PROTOBUF_LIB ${protobuf_LIBRARIES})
 
@@ -85,9 +97,9 @@ find_program(_PROTOBUF_PROTOC
 
 # GRPC++
 
-pkg_check_modules (gRPC++ gRPC++>=1.2.0)
+pkg_check_modules (grpc++ grpc++>=1.2.0)
 
-message(STATUS "Using gRPC++ ${gRPC++_VERSION}")
+message(STATUS "Using gRPC++ ${grpc++_VERSION}")
 
 set(_GRPC_GRPCPP grpc++)
 
@@ -96,14 +108,6 @@ find_program(_GRPC_CPP_PLUGIN_EXECUTABLE
         DOC "grpc_cpp_plugin compiler"
         )
 
-
-
-# GFLAGS
-
-set(gflags_STATIC ON)
-find_package(gflags CONFIG REQUIRED)
-message("-- Using gflags ${gflags_VERSION}")
-list(APPEND LIB_LIST gflags)
 
 # OpenSSL
 
@@ -117,6 +121,7 @@ endif()
 
 message("OpenSSL root dir: ${OPENSSL_ROOT_DIR}")
 
+set(OPENSSL_USE_STATIC_LIBS TRUE)
 find_package(OpenSSL REQUIRED)
 
 message("OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
@@ -160,9 +165,7 @@ add_executable(gkvs-cli
 
 target_link_libraries(gkvs-cli
         ${_GRPC_GRPCPP}
-        ${_PROTOBUF_LIB}
-        glog
-        gflags)
+        ${_PROTOBUF_LIB})
 
 # Build server
 
@@ -184,6 +187,5 @@ message("-- LIB_LIST ${LIB_LIST}")
 target_link_libraries(gkvs
         ${_GRPC_GRPCPP}
         ${_PROTOBUF_LIB}
-        msgpackc
         ${LIB_LIST})
 
