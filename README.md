@@ -151,8 +151,6 @@ cmake ..
 make
 cd ../../..
 
-```
-
 # Build hiredis
 cd modules/hiredis
 make
@@ -165,8 +163,7 @@ make EVENT_LIB=libevent
 cd ../..
 ```
 
-* Build GKVS
-```
+# Build GKVS
 cd gkvs
 mkdir build
 cd build
@@ -174,7 +171,7 @@ cmake ..
 make
 ```
 
-Run:
+### Run
 ```
 # Must have local Redis running
 gkvs ../example/redis1-lua.conf
