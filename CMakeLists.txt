@@ -47,7 +47,7 @@ list(APPEND SERVER_LIB_LIST ${_LUAJIT_LIB})
 
 # Msgpack
 
-find_library(_MSGPACK_LIB libmsgpackc.a msgpackc)
+find_library(_MSGPACK_LIB libmsgpackc.a msgpackc HINTS "modules/msgpack-c/build")
 message(STATUS "Using msgpack lib ${_MSGPACK_LIB}")
 list(APPEND CLIENT_LIB_LIST ${_MSGPACK_LIB})
 list(APPEND SERVER_LIB_LIST ${_MSGPACK_LIB})

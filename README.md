@@ -2,10 +2,6 @@
 
 Generic Key-Value Storage
 
-## DEPRECATED
-Server node now will be supported only on GoLang, please take a look on gkvs-go
-
-
 Universal API to access data in multiple key-value databases (proxy and state-less)
 
 ### Supported Databases
@@ -48,27 +44,130 @@ Stream Operations:
 
 All errors are pass-through to client.
 
-### Build
+### Dependencies
 
 Required libraries:
 * Protobuf 3.5.1
-* GRPC 1.2.0
-* Aerospike Client
-* Redis
-* LuaJIT
-* Msgpack
-* LZ4, ZSDT, Snappy, BZ2, Z
+* GRPC++ 1.2.0
+* Aerospike Client C
+* Hiredis
+* LuaJIT 2.0.5
+* Msgpack 3.0 and upper
+* LibZ
 * OpenSSL
 
-### Build
+### Quick Start
 
-Legacy make:
+* Install Build Essential
 ```
+# Ubuntu
+sudo apt-get install build-essential cmake pkg-config autoconf automake libtool
+sudo apt-get install clang libc++-dev g++ libc6-dev ncurses-dev
+
+# MacOs
+sudo xcode-select --install
+brew install autoconf automake libtool shtool cmake
+```
+
+* Install OpenSSL
+```
+# Ubuntu
+sudo apt-get install libssl-dev
+
+# MacOs
+brew install openssl
+```
+
+* Install LibEvent (needed for Aerospike Client)
+```
+# Ubuntu
+sudo apt-get install libevent-dev
+
+# MacOs
+brew install libevent
+```
+
+* Install gflags (needed for GRPC++ and GKVS)
+```
+# Ubuntu
+sudo apt-get install libgflags-dev
+
+# MacOs
+brew install gflags
+```
+
+* Install LuaJit (needed by GKVS)
+```
+# Ubuntu
+git clone http://luajit.org/git/luajit-2.0.git
+cd luajit-2.0
+git checkout tags/v2.0.5
 make
+sudo make install
+
+# MacOs
+brew install luajit
 ```
 
-General cmake:
+* Install golang (needed to build GRPC)
 ```
+# Ubuntu
+sudo apt-get install golang
+
+# MacOs
+brew install golang
+```
+
+* Checkout GKVS and sub-modules
+```
+git clone https://github.com/gkvs/gkvs
+cd gkvs
+git submodule update --init --recursive
+```
+
+* Install SubModules for MacOs
+```
+brew install hiredis
+brew install protobuf grpc glog
+```
+
+* Build SubModules Manually (recommended)
+```
+
+# Build MsgPack
+cd modules/msgpack-c
+mkdir build
+cd build
+cmake ..
+make
+# optionally - sudo make install
+cd ../../..
+
+# Build gRPC
+cd modules/grpc
+mkdir build
+cd build
+cmake ..
+make
+cd ../../..
+
+```
+
+# Build hiredis
+cd modules/hiredis
+make
+# optionally - sudo make install
+cd ../..
+
+# Build Aerospike
+cd modules/aerospike-client-c
+make EVENT_LIB=libevent
+cd ../..
+```
+
+* Build GKVS
+```
+cd gkvs
 mkdir build
 cd build
 cmake ..
@@ -77,12 +176,17 @@ make
 
 Run:
 ```
-./src/gkvs_server redis1.conf
+# Must have local Redis running
+gkvs ../example/redis1-lua.conf
+
+# Must have local Aerospike running
+gkvs ../example/as1-lua.conf
 ```
 
 ### Configure
 
 GKVS supports config scripts written in LUA language
+This is an example gkvs-lua.conf
 ```
 
 add_cluster("redis1", "redis", { host = "127.0.0.1", port = 6379 } );
@@ -92,49 +196,3 @@ add_table("test", "redis1", { ttl = 100 } );
 add_view("TEST", "redis1", "test");
 
 ```
-
-### Build
-
-Install OpenSSL and define its location, example
-
-```
-brew install openssl
-export OPENSSL_ROOT_DIR=/usr/local/Cellar/openssl/1.0.2o_1
-```
-
-Install libs
-```
-sudo apt-get install pkg-config libevent-dev
-```
-
-Fetch modules in gkvs
-```
-git submodule update --init --recursive
-```
-
-Build Aerospike Client
-```
-pushd modules
-pushd aerospike-client-c
-make EVENT_LIB=libevent
-popd
-popd
-```
-
-Build GKVS
-```
-mkdir build
-pushd build
-cmake ..
-popd
-```
-
-
-#### Brew and package config
-
-brew openssl requirement in env (with make build)
-```
-export PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig
-```
-
-
