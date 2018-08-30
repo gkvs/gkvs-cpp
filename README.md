@@ -161,7 +161,6 @@ cd ../..
 cd modules/aerospike-client-c
 make EVENT_LIB=libevent
 cd ../..
-```
 
 # Build GKVS
 cd gkvs
@@ -172,6 +171,9 @@ make
 ```
 
 ### Run
+
+GKVS reads LUA script on startup and initialize itself
+
 ```
 # Must have local Redis running
 gkvs ../example/redis1-lua.conf
