@@ -1,4 +1,6 @@
-# gkvs
+# gkvs-cpp
+
+Server Node written on C++, keep it as legacy code. The actual server node will be in GoLang.
 
 Generic Key-Value Storage
 
