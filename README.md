@@ -1,6 +1,6 @@
 # Deprecated
 
-The whole GKVS project deprecated, please use https://github.com/shvid/datafire
+The whole GKVS project was deprecated, please use https://github.com/shvid/datafire
 
 # gkvs-cpp
 
