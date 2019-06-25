@@ -1,3 +1,7 @@
+# Deprecated
+
+The whole GKVS project deprecated, please use https://github.com/shvid/datafire
+
 # gkvs-cpp
 
 Server Node written on C++, keep it as legacy code. The actual server node will be in GoLang.
